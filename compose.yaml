@@ -1,0 +1,21 @@
+services:
+  open_pi_main:
+    image: open_pi_robot
+
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+
+    network_mode: host
+    privileged: true
+
+    volumes:
+      - ./:/open_pi_robot
+
+    environment:
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      
+    working_dir: /open_pi_robot
+
+    command: sleep infinity
