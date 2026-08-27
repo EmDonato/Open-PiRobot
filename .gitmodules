@@ -1,5 +1,5 @@
-[submodule "modules/interfaces"]
-	path = modules/interfaces
+[submodule "interfaces"]
+	path = interfaces
 	url = git@github.com:EmDonato/Ros2_interfaces.git
 [submodule "modules/Ros2_joystick"]
 	path = modules/teleoperation

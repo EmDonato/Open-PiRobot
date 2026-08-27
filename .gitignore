@@ -13,3 +13,4 @@ Log/
 core
 core.*
 src/core
+/script_logs/

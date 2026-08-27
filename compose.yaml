@@ -1,6 +1,7 @@
 services:
-  open_pi_main:
-    image: open_pi_robot
+  open_pi_robot:
+    image: open-pi-robot-imag
+    container_name: open-pi-robot
 
     build:
       context: .
@@ -18,4 +19,4 @@ services:
       
     working_dir: /open_pi_robot
 
-    command: sleep infinity
+    command: ros2 launch open_pi_bringup robot_launch.py
