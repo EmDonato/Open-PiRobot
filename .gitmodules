@@ -1,6 +1,21 @@
 [submodule "modules/interfaces"]
 	path = modules/interfaces
 	url = git@github.com:EmDonato/Ros2_interfaces.git
-[submodule "modules/teleoperation"]
+[submodule "modules/Ros2_joystick"]
 	path = modules/teleoperation
 	url = git@github.com:EmDonato/Ros2_teleoperation.git
+[submodule "modules/Ros2_sensor_fusion"]
+	path = modules/Ros2_sensor_fusion
+	url = git@github.com:EmDonato/Ros2_sensor_fusion.git
+[submodule "modules/Ros2_tts_voice"]
+	path = modules/Ros2_tts_voice
+	url = git@github.com:EmDonato/Ros2_tts_voice.git
+[submodule "drivers/Ros2_realsense_driver"]
+	path = drivers/Ros2_realsense_driver
+	url = git@github.com:EmDonato/Ros2_realsense_driver.git
+[submodule "drivers/Ros2_lidar_driver"]
+	path = drivers/Ros2_lidar_driver
+	url = git@github.com:EmDonato/Ros2_lidar_driver.git
+[submodule "drivers/Ros2_stm32_driver"]
+	path = drivers/Ros2_stm32_driver
+	url = git@github.com:EmDonato/Ros2_stm32_driver.git
