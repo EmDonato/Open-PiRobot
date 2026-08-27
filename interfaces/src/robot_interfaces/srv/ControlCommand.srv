@@ -1,0 +1,5 @@
+int32 ARM_TOGGLE=1
+int32 RESET=2
+int32 command
+---
+bool success

@@ -9,14 +9,17 @@ cd "$PROJECT_DIR"
 
 echo "===== Startup begin ====="
 
-echo "Setup teleoperation container [1/2]"
+echo "Setup teleoperation container [1/3]"
 
 bash "$SCRIPT_DIR/joy_start.sh"
 
-echo "Setup main container [2/2]"
+echo "Setup teleoperation container [2/3]"
 
-docker compose -f "$PROJECT_DIR/compose.yaml" up -d
+bash "$SCRIPT_DIR/sensor_fusion_start.sh"
+
+echo "Setup main container [3/3]"
+
+docker compose -f "$PROJECT_DIR/compose.yaml" up -d --build
 
 echo "===== Startup end ====="
 
-docker compose -f "$PROJECT_DIR/compose.yaml" exec open_pi_main bash

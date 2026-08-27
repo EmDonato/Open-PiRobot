@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     python3-colcon-common-extensions \
     ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-robot-state-publisher \
+    ros-humble-joint-state-publisher \
+    ros-humble-tf2-tools \
+    ros-humble-xacro \
+    ros-humble-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
@@ -38,4 +43,4 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /home/openPi/.bashrc && \
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-CMD ["sleep", "infinity"]
+CMD ["ros2", "launch", "open_pi_bringup", "robot_launch.py"]
