@@ -81,6 +81,7 @@ compose_file_for() {
         fusion)    echo "$SCRIPT_DIR/modules/Ros2_sensor_fusion/compose.yaml" ;;
         joystick)  echo "$SCRIPT_DIR/modules/teleoperation/compose.yaml" ;;
         voice)     echo "$SCRIPT_DIR/modules/Ros2_tts_voice/compose.yaml" ;;
+        slam)      echo "$SCRIPT_DIR/modules/Ros2_slam_module/compose.yaml" ;;
     esac
 }
 
@@ -93,6 +94,7 @@ service_for() {
         fusion)    echo "open-pi-sensor-fusion" ;;
         joystick)  echo "open-pi-joystick" ;;
         voice)     echo "open-pi-voice-ia" ;;
+        slam)      echo "slam" ;;
     esac
 }
 
@@ -105,6 +107,7 @@ container_for() {
         fusion)    echo "open-pi-sensor-fusion" ;;
         joystick)  echo "open-pi-joystick" ;;
         voice)     echo "open-pi-voice-ia" ;;
+        slam)      echo "robot-slam" ;;
     esac
 }
 
@@ -130,6 +133,9 @@ normalize_target() {
             ;;
         voice|tts|voice-ia|open-pi-voice-ia)
             echo "voice"
+            ;;
+        slam|mapping|localization|open-pi-slam)
+            echo "slam"
             ;;
         *)
             return 1
