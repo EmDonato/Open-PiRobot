@@ -1,6 +1,6 @@
 services:
   open_pi_robot:
-    image: open-pi-robot-imag
+    image: open-pi-robot-img
     container_name: open-pi-robot
 
     build:

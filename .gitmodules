@@ -19,3 +19,6 @@
 [submodule "drivers/Ros2_stm32_driver"]
 	path = drivers/Ros2_stm32_driver
 	url = git@github.com:EmDonato/Ros2_stm32_driver.git
+[submodule "modules/Ros2_slam_module"]
+	path = modules/Ros2_slam_module
+	url = git@github.com:EmDonato/Ros2_slam_module.git

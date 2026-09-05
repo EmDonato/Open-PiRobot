@@ -3,7 +3,7 @@
 
     <!-- DEPTH CAMERA -->
 
-    <joint name="camera_joint" type="fixed">
+    <joint name="realsense_joint" type="fixed">
         <parent link="chassis"/>
         <child link="realsense_link"/>
         <origin xyz="0.11 0.0105 0.1285" rpy="0 0 0"/>
@@ -21,5 +21,13 @@
         </visual>
     </link>
 
+    <joint name="camera_joint" type="fixed">
+        <parent link="realsense_link"/>
+        <child link="camera_link"/>
+        <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="camera_link">
+    </link>
 
 </robot>
