@@ -10,7 +10,7 @@ LOG_DIR="$SCRIPT_DIR/script_logs"
 DEBUG_INFO_LOG="$LOG_DIR/debug_info.txt"
 WARNING_ERROR_LOG="$LOG_DIR/warnings_errors.txt"
 
-ALL_TARGETS=(stm32 lidar realsense fusion joystick voice robot)
+ALL_TARGETS=(stm32 lidar realsense fusion slam voice robot)
 SELECTED_TARGETS=()
 LOG_PIDS=()
 HARDWARE_ERROR=""
@@ -33,7 +33,7 @@ usage() {
     echo "  create,  -c          Build, create and start the container"
     echo "  start,   -s          Start the existing container"
     echo "  stop,    -t          Stop the container"
-    echo "  restart, -r          Restart the container"
+    echo "  restart, -r          Recreate the container using the current image"
     echo "  remove,  -x          Stop and remove the container"
     echo "  status               Show the container status"
     echo "  check                Check module prerequisites"
@@ -41,7 +41,7 @@ usage() {
     echo "  help,    -h          Show this help message"
     echo
     echo "Containers:"
-    echo "  stm32, lidar, realsense, fusion, joystick, voice, robot"
+    echo "  stm32, lidar, realsense, fusion, voice, robot"
     echo
     echo "Examples:"
     echo "  $0"
@@ -79,7 +79,6 @@ compose_file_for() {
         lidar)     echo "$SCRIPT_DIR/drivers/Ros2_lidar_driver/compose.yaml" ;;
         realsense) echo "$SCRIPT_DIR/drivers/Ros2_realsense_driver/compose.yaml" ;;
         fusion)    echo "$SCRIPT_DIR/modules/Ros2_sensor_fusion/compose.yaml" ;;
-        joystick)  echo "$SCRIPT_DIR/modules/teleoperation/compose.yaml" ;;
         voice)     echo "$SCRIPT_DIR/modules/Ros2_tts_voice/compose.yaml" ;;
         slam)      echo "$SCRIPT_DIR/modules/Ros2_slam_module/compose.yaml" ;;
     esac
@@ -92,7 +91,6 @@ service_for() {
         lidar)     echo "lidar_driver" ;;
         realsense) echo "realsense_driver" ;;
         fusion)    echo "open-pi-sensor-fusion" ;;
-        joystick)  echo "open-pi-joystick" ;;
         voice)     echo "open-pi-voice-ia" ;;
         slam)      echo "slam" ;;
     esac
@@ -105,7 +103,6 @@ container_for() {
         lidar)     echo "open-pi-lidar-driver" ;;
         realsense) echo "open-pi-realsense-driver" ;;
         fusion)    echo "open-pi-sensor-fusion" ;;
-        joystick)  echo "open-pi-joystick" ;;
         voice)     echo "open-pi-voice-ia" ;;
         slam)      echo "robot-slam" ;;
     esac
@@ -127,9 +124,6 @@ normalize_target() {
             ;;
         fusion|sensor-fusion|open-pi-sensor-fusion)
             echo "fusion"
-            ;;
-        joystick|teleoperation|open-pi-joystick)
-            echo "joystick"
             ;;
         voice|tts|voice-ia|open-pi-voice-ia)
             echo "voice"
@@ -232,12 +226,6 @@ check_hardware() {
 
             if ! lsusb | grep -qi "8086:0b3a"; then
                 HARDWARE_ERROR="RealSense D435i USB device 8086:0b3a was not found."
-                return 1
-            fi
-            ;;
-        joystick)
-            if ! compgen -G "/dev/input/js*" >/dev/null; then
-                HARDWARE_ERROR="No joystick found in /dev/input/js*."
                 return 1
             fi
             ;;
@@ -403,8 +391,8 @@ restart_target() {
         return 1
     fi
 
-    log_message "INFO" "Restarting $(container_for "$1")."
-    compose_for "$1" restart "$(service_for "$1")" || return 1
+    log_message "INFO" "Recreating $(container_for "$1") with the current image."
+    compose_for "$1" up --detach --no-build --force-recreate "$(service_for "$1")" || return 1
     verify_running "$1"
 }
 

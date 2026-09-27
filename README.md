@@ -228,3 +228,18 @@ the module's `config/` directory.
 
 This repository is under active development. Package metadata and licensing
 information should be reviewed before distribution.
+
+## IMU and encoder diagnostics
+
+The STM32 driver publishes:
+- `/debug/imu` (`robot_interfaces/msg/ImuEuler`): roll, pitch, yaw in radians
+  and degrees, derived from the corrected `/imu` quaternion.
+- `/odom/solo` (`nav_msgs/msg/Odometry`): encoder-only odometry, with no TF.
+
+The debug ghost robots and their TFs have been removed. The real robot uses
+`odom -> base_link -> chassis -> imu_link`, with odometry TF owned by the EKF.
+
+After rebuilding STM32 and robot images, recreate their containers.
+Restart RViz once to clear any cached static ghost transforms from the previous
+debug setup. To inspect the custom IMU message on another ROS machine, rebuild
+and source `robot_interfaces` there too.
