@@ -12,8 +12,10 @@ WARNING_ERROR_LOG="$LOG_DIR/warnings_errors.txt"
 
 ALL_TARGETS=(stm32 lidar realsense fusion slam voice robot)
 SELECTED_TARGETS=()
+PARSED_ARGUMENTS=()
 LOG_PIDS=()
 HARDWARE_ERROR=""
+SLAM_ALGORITHM=""
 
 mkdir -p "$LOG_DIR"
 touch "$DEBUG_INFO_LOG"
@@ -24,7 +26,7 @@ exec > >(tee -a "$DEBUG_INFO_LOG")
 exec 2> >(tee -a "$WARNING_ERROR_LOG" >&2)
 
 usage() {
-    echo "Usage: $0 [COMMAND] [CONTAINER ...]"
+    echo "Usage: $0 [COMMAND] [CONTAINER ...] [SLAM OPTION]"
     echo
     echo "Without arguments: create missing containers and start all containers."
     echo
@@ -41,17 +43,79 @@ usage() {
     echo "  help,    -h          Show this help message"
     echo
     echo "Containers:"
-    echo "  stm32, lidar, realsense, fusion, voice, robot"
+    echo "  stm32, lidar, realsense, fusion, slam, voice, robot"
+    echo
+    echo "SLAM options (select backend and hardware check for the slam target):"
+    echo "  --slam_toolbox       Run SLAM Toolbox (requires LiDAR)"
+    echo "  --slam__rtab         Run RTAB-Map (requires RealSense; default)"
+    echo "  --slam_rtab          Alias for --slam__rtab"
     echo
     echo "Examples:"
     echo "  $0"
+    echo "  $0 --slam_toolbox"
     echo "  $0 build"
     echo "  $0 --build voice lidar"
+    echo "  $0 create slam --slam_toolbox"
+    echo "  $0 create slam --slam__rtab"
     echo "  $0 restart stm32 robot"
     echo "  $0 logs stm32"
     echo
     echo "Debug/info log:    $DEBUG_INFO_LOG"
     echo "Warning/error log: $WARNING_ERROR_LOG"
+}
+
+select_slam_algorithm() {
+    local requested="$1"
+
+    if [[ -n "$SLAM_ALGORITHM" && "$SLAM_ALGORITHM" != "$requested" ]]; then
+        log_message "ERROR" "--slam_toolbox and --slam__rtab are mutually exclusive."
+        return 1
+    fi
+
+    SLAM_ALGORITHM="$requested"
+}
+
+parse_arguments() {
+    local argument
+
+    PARSED_ARGUMENTS=()
+
+    for argument in "$@"; do
+        case "$argument" in
+            --slam_toolbox)
+                select_slam_algorithm "toolbox" || return 1
+                ;;
+            --slam__rtab|--slam_rtab)
+                select_slam_algorithm "rtab" || return 1
+                ;;
+            *)
+                PARSED_ARGUMENTS+=("$argument")
+                ;;
+        esac
+    done
+
+    if [[ -z "$SLAM_ALGORITHM" ]]; then
+        SLAM_ALGORITHM="rtab"
+    fi
+}
+
+configure_slam() {
+    case "$SLAM_ALGORITHM" in
+        toolbox)
+            export SLAM_PACKAGE="slam_toolbox_bringup"
+            export SLAM_LAUNCH_FILE="slam_toolbox_online_async.launch.py"
+            export SLAM_CONFIG_FILE="/ws/config/slam_toolbox_config.yaml"
+            ;;
+        rtab)
+            export SLAM_PACKAGE="rtabmap_bringup"
+            export SLAM_LAUNCH_FILE="slam.launch.py"
+            export SLAM_CONFIG_FILE="/ws/config/slam.yaml"
+            ;;
+        *)
+            log_message "ERROR" "Unsupported SLAM algorithm: $SLAM_ALGORITHM"
+            return 1
+            ;;
+    esac
 }
 
 log_message() {
@@ -202,6 +266,25 @@ check_docker() {
     log_message "OK" "Docker and Docker Compose are available."
 }
 
+check_lidar_hardware() {
+    if ! compgen -G "/dev/ttyUSB*" >/dev/null; then
+        HARDWARE_ERROR="No LiDAR serial device found in /dev/ttyUSB*."
+        return 1
+    fi
+}
+
+check_realsense_hardware() {
+    if ! command -v lsusb >/dev/null 2>&1; then
+        HARDWARE_ERROR="The lsusb command is unavailable; RealSense cannot be checked."
+        return 1
+    fi
+
+    if ! lsusb | grep -qi "8086:0b3a"; then
+        HARDWARE_ERROR="RealSense D435i USB device 8086:0b3a was not found."
+        return 1
+    fi
+}
+
 check_hardware() {
     local target="$1"
 
@@ -213,21 +296,26 @@ check_hardware() {
             fi
             ;;
         lidar)
-            if ! compgen -G "/dev/ttyUSB*" >/dev/null; then
-                HARDWARE_ERROR="No LiDAR serial device found in /dev/ttyUSB*."
-                return 1
-            fi
+            check_lidar_hardware || return 1
             ;;
         realsense)
-            if ! command -v lsusb >/dev/null 2>&1; then
-                HARDWARE_ERROR="The lsusb command is unavailable; RealSense cannot be checked."
-                return 1
-            fi
-
-            if ! lsusb | grep -qi "8086:0b3a"; then
-                HARDWARE_ERROR="RealSense D435i USB device 8086:0b3a was not found."
-                return 1
-            fi
+            check_realsense_hardware || return 1
+            ;;
+        slam)
+            case "$SLAM_ALGORITHM" in
+                toolbox)
+                    if ! check_lidar_hardware; then
+                        HARDWARE_ERROR="SLAM Toolbox requires LiDAR. $HARDWARE_ERROR"
+                        return 1
+                    fi
+                    ;;
+                rtab)
+                    if ! check_realsense_hardware; then
+                        HARDWARE_ERROR="RTAB-Map requires RealSense. $HARDWARE_ERROR"
+                        return 1
+                    fi
+                    ;;
+            esac
             ;;
         voice)
             if [[ ! -d /dev/snd ]]; then
@@ -433,6 +521,9 @@ check_target() {
         robot|fusion)
             log_message "OK" "$target has no host hardware prerequisite."
             ;;
+        slam)
+            log_message "OK" "slam $SLAM_ALGORITHM hardware prerequisite found."
+            ;;
         *)
             log_message "OK" "$target hardware prerequisite found."
             ;;
@@ -575,6 +666,17 @@ main() {
 
     log_message "INFO" "Open-PiRobot manager started: $*"
 
+    if ! parse_arguments "$@"; then
+        usage
+        return 2
+    fi
+
+    set -- "${PARSED_ARGUMENTS[@]}"
+
+    if ! configure_slam; then
+        return 2
+    fi
+
     if [[ $# -gt 0 ]]; then
         command="$1"
         shift
@@ -626,7 +728,7 @@ main() {
         return 2
     fi
 
-    log_message "INFO" "Command: $command | Containers: ${SELECTED_TARGETS[*]}"
+    log_message "INFO" "Command: $command | Containers: ${SELECTED_TARGETS[*]} | SLAM: $SLAM_ALGORITHM"
 
     if [[ "$command" == "logs" ]]; then
         follow_logs

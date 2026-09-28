@@ -1,245 +1,339 @@
 # Open-PiRobot
 
-Open-PiRobot is a modular ROS 2 robot stack designed around independent Docker
-containers. Hardware drivers, control modules, voice output, and the main robot
-description can be built and operated separately while communicating through
-ROS 2 over the host network.
+Open-PiRobot is a modular ROS 2 Humble stack for a Raspberry Pi 5 mobile
+robot. Hardware drivers, state estimation, SLAM, voice output, and robot
+description run in separate Docker containers and communicate through Cyclone
+DDS on the host network.
 
-The project currently targets ROS 2 Humble on Ubuntu 22.04 and is intended to
-run on a Raspberry Pi 5. Driver images default to `linux/arm64`, but they can
-also be built on an x86-64 development machine.
+The central [`Open-PiRobot.sh`](Open-PiRobot.sh) command builds and manages the
+runtime. It can start either SLAM Toolbox with the LiDAR or RTAB-Map with the
+RealSense camera, and it prevents the selected SLAM container from starting
+when its required sensor is not detected.
 
-## Features
+## Quickstart
 
-- Independent containers for each hardware driver and robot module.
-- ROS 2 communication through Cyclone DDS and a shared `ROS_DOMAIN_ID`.
-- Central container management through `Open-PiRobot.sh`.
-- Automatic creation and startup of missing containers.
-- Mandatory STM32 controller validation and non-blocking warnings for optional
-  hardware.
-- URDF/Xacro robot description published by `robot_state_publisher`.
-- Differential-drive sensor fusion, joystick teleoperation, RealSense camera,
-  LD06 LiDAR, and Piper text-to-speech support.
+### 1. Prepare the host
 
-## Architecture
+You need a 64-bit Linux host with:
 
-Each component has its own Dockerfile and Compose project. All runtime
-containers use host networking so ROS 2 discovery works without exposing
-individual ports.
+- Git and a GitHub SSH key, because the submodule URLs use SSH;
+- Docker Engine and Docker Compose v2;
+- `usbutils` (`lsusb`) for RealSense detection;
+- permission to access Docker and the connected USB, serial, input, and audio
+  devices.
 
-| Target | Container | Responsibility | Host hardware |
+ROS 2 does not need to be installed on the host.
+
+Verify Docker:
+
+```bash
+docker info
+docker compose version
+```
+
+### 2. Clone the complete project
+
+```bash
+git clone --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
+cd Open-PiRobot
+git submodule update --init --recursive
+```
+
+If the repository was already cloned, update it together with every
+submodule:
+
+```bash
+git pull --ff-only --recurse-submodules=on-demand
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+### 3. Select the build platform
+
+Images default to Raspberry Pi 5 (`linux/arm64`). On an x86-64 development
+machine, prefix manager commands with:
+
+```bash
+export ROBOT_PLATFORM=linux/amd64
+```
+
+Do not set this override on the Raspberry Pi unless a different target is
+intentional.
+
+### 4. Connect the required hardware
+
+The STM32 controller is mandatory and must appear as `/dev/ttyACM*`.
+
+Then choose one mapping stack:
+
+| Mapping mode | Required sensor | Host detection | Selector |
 | --- | --- | --- | --- |
-| `robot` | `open-pi-robot` | Runs `open_pi_bringup` and publishes the robot description and transforms | None |
-| `stm32` | `open-pi-stm32-driver` | Communicates with the STM32 motor and sensor controller | `/dev/ttyACM*` (required) |
-| `lidar` | `open-pi-lidar-driver` | Publishes LD06 laser scans | `/dev/ttyUSB*` |
-| `realsense` | `open-pi-realsense-driver` | Publishes Intel RealSense D435i color and depth data | USB device `8086:0b3a` |
-| `fusion` | `open-pi-sensor-fusion` | Fuses IMU and encoder measurements into odometry | None |
-| `joystick` | `open-pi-joystick` | Runs joystick input, teleoperation, and control-button nodes | `/dev/input/js*` |
-| `voice` | `open-pi-voice-ia` | Converts messages from `assistant/response` to speech with Piper | `/dev/snd` |
+| SLAM Toolbox (2D) | LD06 LiDAR | `/dev/ttyUSB*` | `--slam_toolbox` |
+| RTAB-Map (RGB-D) | RealSense D435i | USB ID `8086:0b3a` | `--slam__rtab` |
 
-The STM32 driver is the only mandatory runtime component. If its validation or
-Docker operation fails, the central manager stops with an error. Other missing
-devices or failed optional modules produce warnings and do not prevent the
-remaining components from being processed.
+### 5. Check and start a minimal mapping stack
+
+For SLAM Toolbox:
+
+```bash
+./Open-PiRobot.sh check stm32 lidar fusion robot slam --slam_toolbox
+./Open-PiRobot.sh create stm32 lidar fusion robot slam --slam_toolbox
+```
+
+For RTAB-Map:
+
+```bash
+./Open-PiRobot.sh check stm32 realsense fusion robot slam --slam__rtab
+./Open-PiRobot.sh create stm32 realsense fusion robot slam --slam__rtab
+```
+
+The first `create` builds the selected images and can take a long time,
+especially for RealSense. Later `start` commands reuse the existing
+containers; pass the same SLAM selector so the manager checks the correct
+sensor. `--slam_rtab` is accepted as an alias for `--slam__rtab`.
+
+> **RTAB-Map data warning:** the current
+> `modules/Ros2_slam_module/config/slam.yaml` defaults to `reset_mapping`.
+> Starting RTAB-Map in this mode deletes the existing `/data/rtabmap.db`.
+> Change the mode to `mapping` before relying on database persistence.
+
+### 6. Verify the runtime
+
+```bash
+./Open-PiRobot.sh status
+./Open-PiRobot.sh logs slam
+```
+
+Useful ROS checks from a ROS 2 shell on the same `ROS_DOMAIN_ID` include:
+
+```bash
+ros2 topic hz /scan                         # SLAM Toolbox input
+ros2 topic hz /odom                         # EKF output
+ros2 run tf2_ros tf2_echo odom base_link
+```
+
+For RTAB-Map, also verify the RGB, aligned-depth, and camera-info topic names
+published by the RealSense container. They must match the names configured in
+`modules/Ros2_slam_module/config/slam.yaml`.
+
+To manage every central target at once, run:
+
+```bash
+./Open-PiRobot.sh --slam_toolbox
+# or
+./Open-PiRobot.sh --slam__rtab
+```
+
+The manager skips unavailable optional hardware with a warning. A missing
+STM32 stops the operation with an error.
+
+## System architecture
+
+Each runtime concern has its own image and Compose service. All containers use
+host networking and the same `ROS_DOMAIN_ID`, allowing ROS 2 discovery without
+maintaining a list of Docker port mappings.
+
+| Manager target | Container | Responsibility | Runtime prerequisite |
+| --- | --- | --- | --- |
+| `stm32` | `open-pi-stm32-driver` | Motor-control bridge, IMU, wheel data, joint states, and control service | `/dev/ttyACM*`; mandatory |
+| `lidar` | `open-pi-lidar-driver` | LD06 `sensor_msgs/msg/LaserScan` publisher | `/dev/ttyUSB*` |
+| `realsense` | `open-pi-realsense-driver` | D435i RGB and aligned-depth publisher | USB `8086:0b3a` |
+| `fusion` | `open-pi-sensor-fusion` | EKF odometry and `odom -> base_link` TF | ROS inputs from STM32/control |
+| `slam` | `robot-slam` | SLAM Toolbox or RTAB-Map | LiDAR for Toolbox; RealSense for RTAB |
+| `voice` | `open-pi-voice-ia` | Piper text-to-speech | `/dev/snd` |
+| `robot` | `open-pi-robot` | Xacro expansion and `robot_state_publisher` | None |
+
+The teleoperation submodule provides the `open-pi-joystick` container, but it
+is currently managed with `modules/teleoperation/joystick.sh` or its Compose
+file rather than by `Open-PiRobot.sh`.
+
+The major runtime relationships are:
+
+```text
+STM32 ---- IMU + encoder velocity ----> sensor fusion ----> /odom + odom->base_link
+  ^                                              |
+  |                                              +----> SLAM Toolbox or RTAB-Map
+  +---------------- /cmd_vel --------------------+
+
+LiDAR ---------------- /scan ---------------------------> SLAM Toolbox
+RealSense -------- RGB + aligned depth + camera info ---> RTAB-Map
+robot_state_publisher -------- static robot TF ---------> all consumers
+```
+
+Only one SLAM backend must run at a time because both own the `map -> odom`
+transform.
+
+## SLAM modes
+
+The SLAM image contains both backends. The central manager exports the package,
+launch file, and configuration selected by the command-line option.
+
+| Property | SLAM Toolbox | RTAB-Map |
+| --- | --- | --- |
+| Selector | `--slam_toolbox` | `--slam__rtab` (default) |
+| Primary input | `/scan` | RGB, aligned depth, camera info, `/odom` |
+| Robot frame | `base_footprint` | `base_link` |
+| Map product | 2D occupancy map and pose graph | 2D/3D RGB-D map and database |
+| Configuration | `config/slam_toolbox_config.yaml` | `config/slam.yaml` |
+| Persistent data | Save/serialize explicitly under `/data` | `/data/rtabmap.db` |
+
+The manager checks physical host devices before default startup, `create`,
+`start`, and `restart`. Image-only `build` operations do not require connected
+hardware.
 
 ## Repository layout
 
 ```text
 Open-PiRobot/
-├── docker/                         Main robot image and entrypoint
+├── Open-PiRobot.sh                 Central container manager
+├── compose.yaml                    Robot-description service
+├── docker/                         Main image and entrypoint
+├── interfaces/                     Shared ROS messages and services
 ├── src/
-│   ├── open_pi_bringup/            Main ROS 2 launch package
-│   └── robot_descriptor/           URDF, Xacro, meshes, and simulation files
-├── interfaces/                     Shared ROS 2 messages and services
+│   ├── open_pi_bringup/            Main launch package
+│   └── robot_descriptor/           Xacro, URDF assets, and simulation config
 ├── drivers/
-│   ├── Ros2_stm32_driver/          STM32 serial driver
-│   ├── Ros2_lidar_driver/          LD06 serial LiDAR driver
-│   └── Ros2_realsense_driver/      RealSense D435i driver
+│   ├── Ros2_stm32_driver/          STM32 serial bridge
+│   ├── Ros2_lidar_driver/          LD06 serial driver
+│   └── Ros2_realsense_driver/      RealSense ROS wrapper
 ├── modules/
 │   ├── Ros2_sensor_fusion/         Differential-drive EKF
-│   ├── Ros2_tts_voice/             Piper text-to-speech node
-│   ├── teleoperation/              Joystick control stack
-├── doc/README.md                   Container-manager documentation
-├── compose.yaml                    Main robot Compose file
-└── Open-PiRobot.sh                 Central management command
+│   ├── Ros2_slam_module/           Toolbox and RTAB-Map bringup
+│   ├── Ros2_tts_voice/             Piper text-to-speech
+│   └── teleoperation/              Joystick and velocity control
+└── doc/
+    ├── README.md                   Manager reference
+    ├── ADR-001-containerized-modules.md
+    └── ADR-002-selectable-slam-backends.md
 ```
 
-The directories under `drivers/` and `modules/` are maintained as Git
-submodules. Initialize them before building the project.
+Drivers and modules are Git submodules. A leading `-` in
+`git submodule status --recursive` means that a submodule still needs to be
+initialized. A leading `+` means that its checkout differs from the commit
+recorded by the parent repository.
 
-## Dependencies
+## Container manager
 
-### Host software
-
-- A 64-bit Linux host. Raspberry Pi OS/Ubuntu on Raspberry Pi 5 is the primary
-  deployment target.
-- Git with submodule support.
-- Docker Engine with a running Docker daemon.
-- Docker Compose v2, available through the `docker compose` command.
-- `usbutils` and its `lsusb` command for RealSense prerequisite checks.
-- Internet access during the first image build. Some images download system
-  packages, RealSense sources, Piper, and the voice model.
-- Permission for the current user to access Docker and the required host
-  devices.
-
-ROS 2 does not need to be installed on the host because ROS 2 Humble and the
-required packages are installed inside the images.
-
-### Hardware
-
-- STM32 Nucleo F303RE robot controller exposed as `/dev/ttyACM0` by default.
-- LDROBOT LD06 LiDAR exposed as `/dev/ttyUSB0` when the LiDAR module is used.
-- Intel RealSense D435i when the camera module is used.
-- Linux-compatible joystick when teleoperation is used.
-- ALSA-compatible audio output when text-to-speech is used.
-
-The driver containers use privileged device access and mount the relevant host
-device trees. Verify permissions and udev rules on the host before startup.
-
-## Quick Start
-
-1. Clone the repository and initialize every submodule:
-
-   ```bash
-   git clone --recurse-submodules <repository-url> Open-PiRobot
-   cd Open-PiRobot
-   git submodule update --init --recursive
-   ```
-
-2. Make sure Docker is available to the current user:
-
-   ```bash
-   docker info
-   docker compose version
-   ```
-
-3. Connect the STM32 controller and any optional devices, then check the
-   prerequisites:
-
-   ```bash
-   ./Open-PiRobot.sh check
-   ```
-
-4. Build missing images, create missing containers, and start the robot:
-
-   ```bash
-   ./Open-PiRobot.sh
-   ```
-
-   The first run can take a long time, especially while building the RealSense
-   image. Later runs reuse existing images and containers.
-
-5. Inspect the resulting state or follow logs:
-
-   ```bash
-   ./Open-PiRobot.sh status
-   ./Open-PiRobot.sh logs stm32
-   ```
-
-To build on an x86-64 machine instead of the default ARM64 platform, export the
-platform before running the manager:
+General syntax:
 
 ```bash
-export ROBOT_PLATFORM=linux/amd64
-./Open-PiRobot.sh build
+./Open-PiRobot.sh [COMMAND] [TARGET ...] [SLAM OPTION]
 ```
 
-## Common operations
+| Command | Aliases | Effect |
+| --- | --- | --- |
+| `build` | `--build` | Build images without checking hardware |
+| `create` | `-c`, `--create` | Build, create, and start selected containers |
+| `start` | `-s`, `--start` | Start containers that already exist |
+| `stop` | `-t`, `--stop` | Stop selected containers |
+| `restart` | `-r`, `--restart` | Recreate existing containers with the current image/configuration |
+| `remove` | `-x`, `--remove` | Stop and remove containers, preserving images and bind-mounted data |
+| `status` | `--status` | Show container state |
+| `check` | `--check` | Validate Docker, Compose, and hardware prerequisites |
+| `logs` | `--logs` | Follow the last 50 lines and new container output |
 
-Commands apply to all targets when no target list is supplied:
+Examples:
 
 ```bash
-./Open-PiRobot.sh build
-./Open-PiRobot.sh start
+./Open-PiRobot.sh build fusion slam
+./Open-PiRobot.sh restart stm32 robot
 ./Open-PiRobot.sh stop
-./Open-PiRobot.sh restart
-./Open-PiRobot.sh status
+./Open-PiRobot.sh remove voice
+./Open-PiRobot.sh logs stm32 fusion slam
 ```
 
-Pass one or more target names to operate only on those containers:
+When no target list is supplied, the command applies to every manager target.
+See [`doc/README.md`](doc/README.md) for aliases, error policy, exit statuses,
+and logging details.
+
+## Configuration
+
+All communicating containers must use the same DDS domain:
 
 ```bash
-./Open-PiRobot.sh --build stm32 lidar
-./Open-PiRobot.sh create robot fusion
-./Open-PiRobot.sh restart voice
-./Open-PiRobot.sh logs robot stm32
+ROS_DOMAIN_ID=7 ./Open-PiRobot.sh create stm32 lidar fusion robot slam --slam_toolbox
 ```
 
-See [doc/README.md](doc/README.md) for the complete command reference,
-selection rules, aliases, logging behavior, and error handling.
-
-## Runtime configuration
-
-The most useful environment variables are:
+Important environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ROS_DOMAIN_ID` | `0` | ROS 2 discovery domain shared by all containers |
-| `ROBOT_PLATFORM` | `linux/arm64` | Platform for STM32, LiDAR, and RealSense images |
-| `HOST_UID` | `1000` | User ID passed to supported driver image builds |
-| `HOST_GID` | `1000` | Group ID passed to supported driver image builds |
-| `INTERFACES_CONTEXT` | `../../interfaces` | Shared interface build context for the STM32 image |
+| `ROBOT_PLATFORM` | `linux/arm64` | Target platform for supported images |
+| `HOST_UID` | `1000` | Container user ID for supported builds |
+| `HOST_GID` | `1000` | Container group ID for supported builds |
+| `INTERFACES_CONTEXT` | `../../interfaces` | Shared-interface context for the STM32 image |
 | `LIBREALSENSE_REF` | `v2.56.5` | librealsense source version |
-| `REALSENSE_ROS_REF` | `4.56.4` | RealSense ROS wrapper source version |
-| `BUILD_JOBS` | `2` | Parallel jobs used by the RealSense source build |
+| `REALSENSE_ROS_REF` | `4.56.4` | RealSense ROS wrapper version |
+| `BUILD_JOBS` | `2` | Parallel jobs for the RealSense source build |
 
-ROS node parameters are stored in each component's `config/` directory. The
-driver Compose files mount those directories read-only into their containers.
-Restart the affected container after changing runtime parameters.
+Node parameters live in each component's `config/` directory. Most Compose
+services mount configuration read-only, so restart or recreate the affected
+container after changing parameters.
 
-## Main bringup
+## ROS interfaces and TF ownership
 
-The main container starts:
+Key project interfaces include:
 
-```bash
-ros2 launch open_pi_bringup robot_launch.py
-```
+- STM32 publishes `/imu`, `/enc/twist_meas`, `/odom/solo`, `/joint_states`,
+  `/debug/imu`, and robot status; it subscribes to `/cmd_vel`.
+- Sensor fusion consumes IMU and encoder data, publishes `/odom`, and owns
+  `odom -> base_link`.
+- The robot description owns fixed transforms beneath `base_link`, including
+  the LiDAR, camera mount, chassis, and `base_footprint` relationships.
+- The selected SLAM backend owns `map -> odom`.
+- `robot_interfaces` defines `WheelSpeeds`, `ImuEuler`, and
+  `ControlCommand`.
 
-The launch file expands the robot Xacro description and starts
-`robot_state_publisher` with real-time operation (`use_sim_time: false`). The
-description package also contains meshes, a Gazebo world, and simulation
-configuration for future simulation workflows.
+`/odom/solo` is encoder-only diagnostic odometry and does not publish TF. It
+must not replace the fused odometry when SLAM is active.
 
 ## Logs and troubleshooting
 
-Every manager invocation remains visible in the terminal. Output is also split
-by severity between two persistent files:
+Manager output remains visible and is also appended to:
 
 ```text
 script_logs/debug_info.txt
 script_logs/warnings_errors.txt
 ```
 
-The first file contains debug, informational, successful, progress, and normal
-command output. The second contains warnings, errors, and stderr output.
-
-Useful diagnostics:
+Start with:
 
 ```bash
-./Open-PiRobot.sh check
-./Open-PiRobot.sh status
+./Open-PiRobot.sh check <target>
+./Open-PiRobot.sh status <target>
 ./Open-PiRobot.sh logs <target>
 ```
 
-If Docker cannot be reached, verify that the daemon is running and that the
-current user has access to its socket. If a hardware module is skipped, verify
-its device path on the host and compare it with the corresponding YAML file in
-the module's `config/` directory.
+Common checks:
 
-This repository is under active development. Package metadata and licensing
-information should be reviewed before distribution.
+```bash
+ls -l /dev/ttyACM*                    # STM32
+ls -l /dev/ttyUSB*                    # LiDAR
+lsusb | grep -i 8086:0b3a             # RealSense D435i
+docker compose version
+docker info
+```
 
-## IMU and encoder diagnostics
+If a container starts but ROS data is not visible, confirm that every process
+uses the same `ROS_DOMAIN_ID`, the host firewall permits DDS traffic, and the
+machines' clocks are synchronized. For SLAM failures, verify topic names,
+message rates, and the complete TF chain before tuning mapping parameters.
 
-The STM32 driver publishes:
-- `/debug/imu` (`robot_interfaces/msg/ImuEuler`): roll, pitch, yaw in radians
-  and degrees, derived from the corrected `/imu` quaternion.
-- `/odom/solo` (`nav_msgs/msg/Odometry`): encoder-only odometry, with no TF.
+## Documentation
 
-The debug ghost robots and their TFs have been removed. The real robot uses
-`odom -> base_link -> chassis -> imu_link`, with odometry TF owned by the EKF.
+- [`doc/README.md`](doc/README.md): complete container-manager reference.
+- [`doc/ADR-001-containerized-modules.md`](doc/ADR-001-containerized-modules.md):
+  container-per-module deployment, host networking, and DDS choice.
+- [`doc/ADR-002-selectable-slam-backends.md`](doc/ADR-002-selectable-slam-backends.md):
+  selectable SLAM backends and hardware-gated activation.
+- Each driver and module has its own README with package-specific parameters,
+  topics, and validation steps.
 
-After rebuilding STM32 and robot images, recreate their containers.
-Restart RViz once to clear any cached static ghost transforms from the previous
-debug setup. To inspect the custom IMU message on another ROS machine, rebuild
-and source `robot_interfaces` there too.
+## Project status
+
+The repository is under active development. Hardware checks establish device
+presence, not sensor health, calibration, topic compatibility, or mapping
+quality. Validate the full ROS graph and TF tree on the physical robot before
+autonomous operation. Package metadata and licensing declarations also require
+a final review before distribution.

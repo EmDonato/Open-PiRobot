@@ -6,7 +6,7 @@ inspect, and remove the containers that make up Open-PiRobot.
 Run every command from the repository root:
 
 ```bash
-./Open-PiRobot.sh [COMMAND] [CONTAINER ...]
+./Open-PiRobot.sh [COMMAND] [CONTAINER ...] [SLAM OPTION]
 ```
 
 ## Default behavior
@@ -20,7 +20,7 @@ Running the script without arguments manages the complete robot:
 Targets are processed in this order:
 
 ```text
-stm32 -> lidar -> realsense -> fusion -> joystick -> voice -> robot
+stm32 -> lidar -> realsense -> fusion -> slam -> voice -> robot
 ```
 
 For every target, the manager:
@@ -46,7 +46,7 @@ build again and apply a new image.
 | `create` | `-c`, `--create` | Checks hardware, builds images, and creates or recreates containers in detached mode |
 | `start` | `-s`, `--start` | Starts existing containers; it does not create missing containers |
 | `stop` | `-t`, `--stop` | Stops existing containers without removing them |
-| `restart` | `-r`, `--restart` | Checks hardware and restarts existing containers |
+| `restart` | `-r`, `--restart` | Checks hardware and recreates existing containers with the current image and configuration |
 | `remove` | `-x`, `--remove` | Stops and removes containers but keeps their images |
 | `status` | `--status` | Shows whether each selected container is running, exited, or not created |
 | `check` | `--check` | Validates Compose files and host hardware prerequisites |
@@ -69,7 +69,7 @@ When a command is provided without a target list, it applies to all targets.
 | `lidar` | `lidar_driver`, `open-pi-lidar-driver` | `lidar_driver` | `open-pi-lidar-driver` |
 | `realsense` | `camera`, `realsense_driver`, `open-pi-realsense-driver` | `realsense_driver` | `open-pi-realsense-driver` |
 | `fusion` | `sensor-fusion`, `open-pi-sensor-fusion` | `open-pi-sensor-fusion` | `open-pi-sensor-fusion` |
-| `joystick` | `teleoperation`, `open-pi-joystick` | `open-pi-joystick` | `open-pi-joystick` |
+| `slam` | `mapping`, `localization`, `open-pi-slam` | `slam` | `robot-slam` |
 | `voice` | `tts`, `voice-ia`, `open-pi-voice-ia` | `open-pi-voice-ia` | `open-pi-voice-ia` |
 | `robot` | `main`, `bringup`, `open_pi_robot`, `open-pi-robot` | `open_pi_robot` | `open-pi-robot` |
 
@@ -88,7 +88,8 @@ Place the command first and then list one or more targets:
 ```bash
 ./Open-PiRobot.sh --build voice lidar
 ./Open-PiRobot.sh create stm32 robot
-./Open-PiRobot.sh start fusion joystick
+./Open-PiRobot.sh create slam --slam_toolbox
+./Open-PiRobot.sh start fusion slam --slam__rtab
 ./Open-PiRobot.sh stop realsense
 ./Open-PiRobot.sh restart stm32
 ./Open-PiRobot.sh remove voice
@@ -110,7 +111,8 @@ to be connected.
 | `stm32` | At least one `/dev/ttyACM*` device exists |
 | `lidar` | At least one `/dev/ttyUSB*` device exists |
 | `realsense` | `lsusb` reports USB ID `8086:0b3a` |
-| `joystick` | At least one `/dev/input/js*` device exists |
+| `slam` with `--slam_toolbox` | At least one `/dev/ttyUSB*` LiDAR device exists |
+| `slam` with `--slam__rtab` | `lsusb` reports RealSense USB ID `8086:0b3a` |
 | `voice` | The `/dev/snd` directory exists |
 | `fusion` | No dedicated host hardware prerequisite |
 | `robot` | No dedicated host hardware prerequisite |
@@ -118,6 +120,36 @@ to be connected.
 The checks confirm device discovery, not full device functionality. A device
 can still fail inside its container because of permissions, an incorrect port
 in a parameter file, firmware, or another process using it.
+
+## SLAM selection
+
+The `robot-slam` image contains SLAM Toolbox and RTAB-Map. Select exactly one
+mode whenever the `slam` target is created, recreated, checked, or started:
+
+| Option | Backend | Required hardware |
+| --- | --- | --- |
+| `--slam_toolbox` | SLAM Toolbox 2D mapping | LiDAR at `/dev/ttyUSB*` |
+| `--slam__rtab` | RTAB-Map RGB-D mapping (default) | RealSense D435i `8086:0b3a` |
+| `--slam_rtab` | Alias for `--slam__rtab` | RealSense D435i `8086:0b3a` |
+
+The options may appear anywhere in the command and are mutually exclusive:
+
+```bash
+./Open-PiRobot.sh create slam --slam_toolbox
+./Open-PiRobot.sh restart slam --slam__rtab
+./Open-PiRobot.sh check stm32 lidar fusion robot slam --slam_toolbox
+```
+
+When starting an existing SLAM container, pass the selector used when it was
+created so the manager validates the correct sensor:
+
+```bash
+./Open-PiRobot.sh start slam --slam_toolbox
+```
+
+Changing the algorithm requires `create` or `restart`, because `start` retains
+the command stored in the existing container. Only one backend may run because
+both can publish `map -> odom`.
 
 ## Required and optional targets
 
@@ -195,14 +227,14 @@ Environment variables are passed naturally to the individual Compose files:
 
 ```bash
 ROS_DOMAIN_ID=7 ./Open-PiRobot.sh create stm32 robot
-ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build stm32 lidar realsense
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build stm32 lidar realsense slam
 BUILD_JOBS=1 ./Open-PiRobot.sh build realsense
 ```
 
 | Variable | Default | Used by |
 | --- | --- | --- |
 | `ROS_DOMAIN_ID` | `0` | Every container |
-| `ROBOT_PLATFORM` | `linux/arm64` | STM32, LiDAR, and RealSense |
+| `ROBOT_PLATFORM` | `linux/arm64` | STM32, LiDAR, RealSense, and SLAM |
 | `HOST_UID` | `1000` | Supported driver image builds |
 | `HOST_GID` | `1000` | Supported driver image builds |
 | `INTERFACES_CONTEXT` | `../../interfaces` | STM32 build context |
@@ -217,12 +249,16 @@ ROS 2.
 
 ### First robot startup
 
+Choose one SLAM path. For SLAM Toolbox:
+
 ```bash
 git submodule update --init --recursive
-./Open-PiRobot.sh check
-./Open-PiRobot.sh
+./Open-PiRobot.sh check stm32 lidar fusion robot slam --slam_toolbox
+./Open-PiRobot.sh create stm32 lidar fusion robot slam --slam_toolbox
 ./Open-PiRobot.sh status
 ```
+
+For RTAB-Map, replace `lidar` with `realsense` and use `--slam__rtab`.
 
 ### Rebuild one changed module
 
@@ -243,7 +279,7 @@ container with the new image.
 ### Remove selected containers
 
 ```bash
-./Open-PiRobot.sh remove voice joystick
+./Open-PiRobot.sh remove voice slam
 ```
 
 Images are preserved, so a later `create` can reuse cached build layers.
@@ -295,3 +331,8 @@ ROS parameter errors, and mismatched architectures.
 
 Return to the [main project README](../README.md) for the project architecture,
 dependencies, and Quick Start.
+
+## Architecture decisions
+
+- [ADR-001: Deploy robot capabilities as independent ROS 2 containers](ADR-001-containerized-modules.md)
+- [ADR-002: Provide one hardware-gated, selectable SLAM runtime](ADR-002-selectable-slam-backends.md)
