@@ -234,7 +234,7 @@ BUILD_JOBS=1 ./Open-PiRobot.sh build realsense
 | Variable | Default | Used by |
 | --- | --- | --- |
 | `ROS_DOMAIN_ID` | `0` | Every container |
-| `ROBOT_PLATFORM` | `linux/arm64` | STM32, LiDAR, RealSense, and SLAM |
+| `ROBOT_PLATFORM` | `linux/arm64` | All eight images, including teleoperation |
 | `HOST_UID` | `1000` | Supported driver image builds |
 | `HOST_GID` | `1000` | Supported driver image builds |
 | `INTERFACES_CONTEXT` | `../../interfaces` | STM32 build context |

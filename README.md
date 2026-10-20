@@ -1,6 +1,6 @@
 # Open-PiRobot
 
-Open-PiRobot is a modular ROS 2 Humble stack for a Raspberry Pi 5 mobile
+Open-PiRobot is a modular ROS 2 Jazzy stack for a Raspberry Pi 5 mobile
 robot. Hardware drivers, state estimation, SLAM, voice output, and robot
 description run in separate Docker containers and communicate through Cyclone
 DDS on the host network.
@@ -34,7 +34,7 @@ docker compose version
 ### 2. Clone the complete project
 
 ```bash
-git clone --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
+git clone --branch jazzy-migration --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
 cd Open-PiRobot
 git submodule update --init --recursive
 ```
@@ -43,10 +43,16 @@ If the repository was already cloned, update it together with every
 submodule:
 
 ```bash
-git pull --ff-only --recurse-submodules=on-demand
+git fetch origin
+git switch jazzy-migration
+git pull --ff-only --recurse-submodules=on-demand origin jazzy-migration
 git submodule sync --recursive
 git submodule update --init --recursive
 ```
+
+Save any local changes in the root and submodules before switching branches.
+The submodule update checks out the exact commits recorded by the root;
+do not use `--remote` to deploy this migration.
 
 ### 3. Select the build platform
 
@@ -59,6 +65,16 @@ export ROBOT_PLATFORM=linux/amd64
 
 Do not set this override on the Raspberry Pi unless a different target is
 intentional.
+
+Build on the development PC without starting services or requiring hardware:
+
+```bash
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build
+ROBOT_PLATFORM=linux/amd64 docker compose -f modules/teleoperation/compose.yaml build
+```
+
+See [Jazzy migration evidence](docs/MIGRATION_HUMBLE_TO_JAZZY.md) for validation
+results and the remaining Raspberry Pi acceptance checks.
 
 ### 4. Connect the required hardware
 
@@ -201,7 +217,7 @@ Open-PiRobot/
 │   ├── Ros2_slam_module/           Toolbox and RTAB-Map bringup
 │   ├── Ros2_tts_voice/             Piper text-to-speech
 │   └── teleoperation/              Joystick and velocity control
-└── doc/
+└── docs/
     ├── README.md                   Manager reference
     ├── ADR-001-containerized-modules.md
     └── ADR-002-selectable-slam-backends.md
@@ -243,7 +259,7 @@ Examples:
 ```
 
 When no target list is supplied, the command applies to every manager target.
-See [`doc/README.md`](doc/README.md) for aliases, error policy, exit statuses,
+See [`docs/README.md`](docs/README.md) for aliases, error policy, exit statuses,
 and logging details.
 
 ## Configuration
@@ -259,7 +275,7 @@ Important environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ROS_DOMAIN_ID` | `0` | ROS 2 discovery domain shared by all containers |
-| `ROBOT_PLATFORM` | `linux/arm64` | Target platform for supported images |
+| `ROBOT_PLATFORM` | `linux/arm64` | Target platform for all eight images |
 | `HOST_UID` | `1000` | Container user ID for supported builds |
 | `HOST_GID` | `1000` | Container group ID for supported builds |
 | `INTERFACES_CONTEXT` | `../../interfaces` | Shared-interface context for the STM32 image |
@@ -322,10 +338,10 @@ message rates, and the complete TF chain before tuning mapping parameters.
 
 ## Documentation
 
-- [`doc/README.md`](doc/README.md): complete container-manager reference.
-- [`doc/ADR-001-containerized-modules.md`](doc/ADR-001-containerized-modules.md):
+- [`docs/README.md`](docs/README.md): complete container-manager reference.
+- [`docs/ADR-001-containerized-modules.md`](docs/ADR-001-containerized-modules.md):
   container-per-module deployment, host networking, and DDS choice.
-- [`doc/ADR-002-selectable-slam-backends.md`](doc/ADR-002-selectable-slam-backends.md):
+- [`docs/ADR-002-selectable-slam-backends.md`](docs/ADR-002-selectable-slam-backends.md):
   selectable SLAM backends and hardware-gated activation.
 - Each driver and module has its own README with package-specific parameters,
   topics, and validation steps.
