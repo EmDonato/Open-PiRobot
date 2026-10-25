@@ -17,6 +17,7 @@ when its required sensor is not detected.
 You need a 64-bit Linux host with:
 
 - Git and a GitHub SSH key, because the submodule URLs use SSH;
+- Python 3.10 or newer and PyYAML (`python3` and `python3-yaml` on Ubuntu);
 - Docker Engine and Docker Compose v2;
 - `usbutils` (`lsusb`) for RealSense detection;
 - permission to access Docker and the connected USB, serial, input, and audio
@@ -27,6 +28,7 @@ ROS 2 does not need to be installed on the host.
 Verify Docker:
 
 ```bash
+sudo apt install python3 python3-yaml
 docker info
 docker compose version
 ```
@@ -70,7 +72,7 @@ Build on the development PC without starting services or requiring hardware:
 
 ```bash
 ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build
-ROBOT_PLATFORM=linux/amd64 docker compose -f modules/teleoperation/compose.yaml build
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build teleoperation
 ```
 
 See [Jazzy migration evidence](docs/MIGRATION_HUMBLE_TO_JAZZY.md) for validation
@@ -158,10 +160,11 @@ maintaining a list of Docker port mappings.
 | `slam` | `robot-slam` | SLAM Toolbox or RTAB-Map | LiDAR for Toolbox; RealSense for RTAB |
 | `voice` | `open-pi-voice-ia` | Piper text-to-speech | `/dev/snd` |
 | `robot` | `open-pi-robot` | Xacro expansion and `robot_state_publisher` | None |
+| `teleoperation` | `open-pi-joystick` | Joystick input and velocity commands | `/dev/input/js*` |
 
-The teleoperation submodule provides the `open-pi-joystick` container, but it
-is currently managed with `modules/teleoperation/joystick.sh` or its Compose
-file rather than by `Open-PiRobot.sh`.
+Teleoperation is centrally manageable but intentionally excluded from the
+default group. Select it explicitly with `teleoperation`, `joystick`, or
+`open-pi-joystick`.
 
 The major runtime relationships are:
 
@@ -201,7 +204,9 @@ hardware.
 
 ```text
 Open-PiRobot/
-├── Open-PiRobot.sh                 Central container manager
+├── Open-PiRobot.sh                 Thin Python manager wrapper
+├── config/robot.yaml               Runtime component registry
+├── scripts/robot_manager/          Manager implementation
 ├── compose.yaml                    Robot-description service
 ├── docker/                         Main image and entrypoint
 ├── interfaces/                     Shared ROS messages and services
@@ -233,7 +238,7 @@ recorded by the parent repository.
 General syntax:
 
 ```bash
-./Open-PiRobot.sh [COMMAND] [TARGET ...] [SLAM OPTION]
+./Open-PiRobot.sh [--config PATH] [COMMAND] [TARGET ...] [VARIANT]
 ```
 
 | Command | Aliases | Effect |
@@ -247,6 +252,8 @@ General syntax:
 | `status` | `--status` | Show container state |
 | `check` | `--check` | Validate Docker, Compose, and hardware prerequisites |
 | `logs` | `--logs` | Follow the last 50 lines and new container output |
+| `list` | — | Show registered components, aliases, enablement, and default membership |
+| `validate-config` | — | Validate the registry and enabled Compose paths without Docker or hardware |
 
 Examples:
 
@@ -256,13 +263,23 @@ Examples:
 ./Open-PiRobot.sh stop
 ./Open-PiRobot.sh remove voice
 ./Open-PiRobot.sh logs stm32 fusion slam
+./Open-PiRobot.sh build teleoperation
+./Open-PiRobot.sh --variant slam=toolbox create slam
 ```
 
-When no target list is supplied, the command applies to every manager target.
+When no target list is supplied, the command applies to the enabled default
+group. `all` selects that same group; teleoperation is not part of it.
 See [`docs/README.md`](docs/README.md) for aliases, error policy, exit statuses,
 and logging details.
 
 ## Configuration
+
+The ordered runtime registry is [`config/robot.yaml`](config/robot.yaml).
+It declares Compose paths, services, containers, aliases, required/optional
+policy, hardware checks, default selection, and SLAM variants. Compose files
+remain authoritative for images, mounts, devices, and container parameters.
+Use `--config PATH` to test another registry; its Compose paths still resolve
+relative to this project root.
 
 All communicating containers must use the same DDS domain:
 

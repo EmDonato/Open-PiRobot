@@ -16,7 +16,9 @@ on the host.
 
 ## Repository and deployment boundaries
 
-The root repository integrates the system. `Open-PiRobot.sh` coordinates
+The root repository integrates the system. `Open-PiRobot.sh` is a thin wrapper
+around the modular Python manager in `scripts/robot_manager/`. The manager reads
+the ordered runtime registry from `config/robot.yaml` and coordinates
 module-owned Docker Compose files. Each capability keeps its own dependencies
 and image so changes can be built and tested independently.
 
@@ -99,7 +101,8 @@ Only one SLAM backend runs at a time:
 | RTAB-Map | RGB, aligned depth, camera info, `/odom` | `--slam__rtab` (`--slam_rtab` alias) |
 
 The central manager supports `stm32`, `lidar`, `realsense`, `fusion`, `slam`,
-`voice`, and `robot`. Teleoperation has its own script and Compose file.
+`voice`, `robot`, and `teleoperation`. Teleoperation is registered last and is
+excluded from the default group, so it must be selected explicitly.
 The manager checks the STM32 and the sensors required by the chosen mapping
 backend before relevant startup operations. Image-only builds do not require
 connected hardware.
@@ -108,6 +111,10 @@ Use `./Open-PiRobot.sh build <target>` to build selected images. `create` builds
 and starts services; `start` reuses existing containers, and `restart` recreates
 them using the current image/configuration. Full command details are in the
 [manager reference](README.md).
+
+The runtime registry is independent from Git submodule metadata. Registering a
+component makes an existing Compose service manageable; it does not clone,
+initialize, pull, or update the directory that contains that service.
 
 Configuration belongs to its module. Mapping data is persisted through the
 SLAM module's data mount. The current RTAB-Map configuration uses

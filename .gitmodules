@@ -22,3 +22,6 @@
 [submodule "modules/Ros2_slam_module"]
 	path = modules/Ros2_slam_module
 	url = git@github.com:EmDonato/Ros2_slam_module.git
+[submodule "modules/Ros2_nav_module"]
+	path = modules/Ros2_nav_module
+	url = git@github.com:EmDonato/Ros2_nav_module.git

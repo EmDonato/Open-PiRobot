@@ -24,12 +24,14 @@ Repository map:
 - `interfaces/`: shared ROS messages and services, in a Git submodule.
 - `drivers/`: STM32, LiDAR, and RealSense submodules.
 - `modules/`: sensor fusion, SLAM, voice, and teleoperation submodules.
+- `config/robot.yaml`: ordered runtime registry for manager components and checks.
+- `scripts/robot_manager/`: Python CLI, configuration, Compose, hardware, and logging code.
 - `README.md`: architecture, startup, configuration, and ROS interfaces.
 - `docs/README.md` and `docs/ADR-*.md`: manager reference and architecture decisions.
 
 Read the relevant component README and any applicable local instructions before
-changing it. Teleoperation uses its own script or Compose file and is not managed
-by the central script.
+changing it. Teleoperation is managed centrally only when selected explicitly;
+it is excluded from the manager's default group.
 
 ## Working practices and submodules
 
@@ -74,8 +76,10 @@ on the host. Select checks appropriate to the changed behavior:
   central manager.
 - Compose configuration: `docker compose -f <compose-file> config --quiet`, with
   the environment and build contexts required by that component.
-- Images: `./Open-PiRobot.sh build <target>` for centrally managed targets. Use
-  teleoperation's own Compose file or documented workflow for that module.
+- Manager: run `python3 -m unittest discover -s tests -p 'test_robot_manager.py'`
+  for manager changes and `./Open-PiRobot.sh validate-config` for registry changes.
+- Images: `./Open-PiRobot.sh build <target>` for centrally managed targets,
+  including explicitly selected teleoperation.
 - ROS code: build the affected packages and run available tests in the container
   workspace using `colcon test --packages-select <packages>` followed by
   `colcon test-result --verbose`. Include affected consumers when shared

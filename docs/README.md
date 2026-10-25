@@ -1,338 +1,254 @@
 # Open-PiRobot Container Manager
 
-`Open-PiRobot.sh` is the central command used to build, create, start, stop,
-inspect, and remove the containers that make up Open-PiRobot.
+`Open-PiRobot.sh` is the stable entry point for the central container manager.
+The shell file locates the project, checks Python, and uses `exec` to run the
+modular implementation under `scripts/robot_manager/`. Components, aliases,
+checks, and variants are declared in the ordered `config/robot.yaml` registry.
 
-Run every command from the repository root:
+## Host prerequisites
 
-```bash
-./Open-PiRobot.sh [COMMAND] [CONTAINER ...] [SLAM OPTION]
-```
-
-## Default behavior
-
-Running the script without arguments manages the complete robot:
+The manager requires Python 3.10 or newer, PyYAML, Docker Engine, and Docker
+Compose v2. On Ubuntu, install the host-side Python dependencies with:
 
 ```bash
-./Open-PiRobot.sh
+sudo apt install python3 python3-yaml
 ```
 
-Targets are processed in this order:
+The manager never installs dependencies, clones repositories, or updates Git
+submodules automatically. ROS 2 remains inside the component containers.
+
+## Syntax and default behavior
+
+```bash
+./Open-PiRobot.sh [--config PATH] [COMMAND] [TARGET ...] [VARIANT]
+```
+
+Running without arguments performs the default idempotent startup. For an
+existing container it applies the current Compose configuration without a
+build; for a missing container it builds, creates, and starts it.
+
+The enabled default group is processed in registry order:
 
 ```text
 stm32 -> lidar -> realsense -> fusion -> slam -> voice -> robot
 ```
 
-For every target, the manager:
-
-1. Verifies Docker, Docker Compose, and the target's Compose configuration.
-2. Checks runtime hardware when the target requires a host device.
-3. Checks whether the named container already exists.
-4. Builds the image only when the container is missing.
-5. Creates and starts a missing container.
-6. Reconciles an existing container with the current Compose configuration
-   without rebuilding its image.
-7. Verifies that the container is running.
-
-This behavior is idempotent: running the script again does not intentionally
-rebuild images for containers that already exist. Use `create` when you want to
-build again and apply a new image.
+`all` selects exactly that same group. `teleoperation` is enabled but excluded
+from the default group and must be named explicitly. Explicit target selection
+keeps the user-provided order and removes duplicates after alias resolution.
 
 ## Commands
 
 | Command | Aliases | Behavior |
 | --- | --- | --- |
-| `build` | `--build` | Builds images without requiring connected hardware or creating containers |
-| `create` | `-c`, `--create` | Checks hardware, builds images, and creates or recreates containers in detached mode |
-| `start` | `-s`, `--start` | Starts existing containers; it does not create missing containers |
-| `stop` | `-t`, `--stop` | Stops existing containers without removing them |
-| `restart` | `-r`, `--restart` | Checks hardware and recreates existing containers with the current image and configuration |
-| `remove` | `-x`, `--remove` | Stops and removes containers but keeps their images |
-| `status` | `--status` | Shows whether each selected container is running, exited, or not created |
-| `check` | `--check` | Validates Compose files and host hardware prerequisites |
-| `logs` | `--logs` | Follows the last 50 log lines and new output from selected containers |
-| `help` | `-h`, `--help` | Prints the built-in command reference |
+| `build` | `--build` | Build images without hardware checks or container creation |
+| `create` | `-c`, `--create` | Check hardware, build, create, and start containers |
+| `start` | `-s`, `--start` | Check hardware and start containers that already exist |
+| `stop` | `-t`, `--stop` | Stop existing containers |
+| `restart` | `-r`, `--restart` | Check hardware and recreate existing containers without building |
+| `remove` | `-x`, `--remove` | Stop and remove containers while preserving images and bind-mounted data |
+| `status` | `--status` | Show each selected container state |
+| `check` | `--check` | Validate Docker, Compose, and declared hardware checks |
+| `logs` | `--logs` | Follow the last 50 lines and new output until interrupted |
+| `list` | — | Show component aliases, enablement, and default-group membership |
+| `validate-config` | — | Validate the registry and enabled Compose paths without Docker or hardware |
+| `help` | `-h`, `--help` | Print the command reference |
 
-When a command is provided without a target list, it applies to all targets.
+Examples:
 
 ```bash
+./Open-PiRobot.sh
 ./Open-PiRobot.sh build
-./Open-PiRobot.sh status
-./Open-PiRobot.sh stop
-```
-
-## Targets and aliases
-
-| Canonical target | Accepted aliases | Compose service | Container name |
-| --- | --- | --- | --- |
-| `stm32` | `stm32_driver`, `open-pi-stm32-driver` | `stm32_driver` | `open-pi-stm32-driver` |
-| `lidar` | `lidar_driver`, `open-pi-lidar-driver` | `lidar_driver` | `open-pi-lidar-driver` |
-| `realsense` | `camera`, `realsense_driver`, `open-pi-realsense-driver` | `realsense_driver` | `open-pi-realsense-driver` |
-| `fusion` | `sensor-fusion`, `open-pi-sensor-fusion` | `open-pi-sensor-fusion` | `open-pi-sensor-fusion` |
-| `slam` | `mapping`, `localization`, `open-pi-slam` | `slam` | `robot-slam` |
-| `voice` | `tts`, `voice-ia`, `open-pi-voice-ia` | `open-pi-voice-ia` | `open-pi-voice-ia` |
-| `robot` | `main`, `bringup`, `open_pi_robot`, `open-pi-robot` | `open_pi_robot` | `open-pi-robot` |
-
-Use `all` to explicitly select every target. Repeated target names are removed
-from the selection.
-
-```bash
-./Open-PiRobot.sh restart all
-./Open-PiRobot.sh build voice voice lidar
-```
-
-## Selecting containers
-
-Place the command first and then list one or more targets:
-
-```bash
-./Open-PiRobot.sh --build voice lidar
 ./Open-PiRobot.sh create stm32 robot
-./Open-PiRobot.sh create slam --slam_toolbox
-./Open-PiRobot.sh start fusion slam --slam__rtab
-./Open-PiRobot.sh stop realsense
-./Open-PiRobot.sh restart stm32
-./Open-PiRobot.sh remove voice
-./Open-PiRobot.sh status robot stm32
-./Open-PiRobot.sh logs stm32 lidar
+./Open-PiRobot.sh restart stm32 robot
+./Open-PiRobot.sh build teleoperation
+./Open-PiRobot.sh logs stm32 fusion slam
+./Open-PiRobot.sh list
+./Open-PiRobot.sh validate-config
 ```
 
-An unknown command or target prints the help text and exits without performing
-container operations.
+## Registered components
 
-## Prerequisite checks
+| Target | Aliases | Service | Container | Default |
+| --- | --- | --- | --- | --- |
+| `stm32` | `stm32_driver`, `open-pi-stm32-driver` | `stm32_driver` | `open-pi-stm32-driver` | yes |
+| `lidar` | `lidar_driver`, `open-pi-lidar-driver` | `lidar_driver` | `open-pi-lidar-driver` | yes |
+| `realsense` | `camera`, `realsense_driver`, `open-pi-realsense-driver` | `realsense_driver` | `open-pi-realsense-driver` | yes |
+| `fusion` | `sensor-fusion`, `open-pi-sensor-fusion` | `open-pi-sensor-fusion` | `open-pi-sensor-fusion` | yes |
+| `slam` | `mapping`, `localization`, `open-pi-slam` | `slam` | `robot-slam` | yes |
+| `voice` | `tts`, `voice-ia`, `open-pi-voice-ia` | `open-pi-voice-ia` | `open-pi-voice-ia` | yes |
+| `robot` | `main`, `bringup`, `open_pi_robot`, `open-pi-robot` | `open_pi_robot` | `open-pi-robot` | yes |
+| `teleoperation` | `joystick`, `open-pi-joystick` | `open-pi-joystick` | `open-pi-joystick` | no |
 
-Hardware checks are performed by the default workflow and by `create`,
-`start`, `restart`, and `check`. A plain image build does not require hardware
-to be connected.
+`enabled: false` keeps a component visible in `list`, but excludes it from both
+default and explicit selection. Selecting it is an argument/configuration error.
 
-| Target | Check |
+## Hardware checks
+
+Hardware is checked during default startup, `create`, `start`, `restart`, and
+`check`. `build` deliberately performs no hardware check.
+
+| Component | Declared check |
 | --- | --- |
-| `stm32` | At least one `/dev/ttyACM*` device exists |
-| `lidar` | At least one `/dev/ttyUSB*` device exists |
-| `realsense` | `lsusb` reports USB ID `8086:0b3a` |
-| `slam` with `--slam_toolbox` | At least one `/dev/ttyUSB*` LiDAR device exists |
-| `slam` with `--slam__rtab` | `lsusb` reports RealSense USB ID `8086:0b3a` |
-| `voice` | The `/dev/snd` directory exists |
-| `fusion` | No dedicated host hardware prerequisite |
-| `robot` | No dedicated host hardware prerequisite |
+| `stm32` | A path matches `/dev/ttyACM*` |
+| `lidar` | A path matches `/dev/ttyUSB*` |
+| `realsense` | `lsusb` reports `8086:0b3a` |
+| `voice` | `/dev/snd` is a directory |
+| `teleoperation` | A path matches `/dev/input/js*` |
+| `slam=toolbox` | A path matches `/dev/ttyUSB*` |
+| `slam=rtab` | `lsusb` reports `8086:0b3a` |
 
-The checks confirm device discovery, not full device functionality. A device
-can still fail inside its container because of permissions, an incorrect port
-in a parameter file, firmware, or another process using it.
+The supported generic check types are:
 
-## SLAM selection
+- `glob`, with a `pattern`;
+- `directory`, with a `path`;
+- `usb`, with four-digit hexadecimal `vid` and `pid` values.
 
-The `robot-slam` image contains SLAM Toolbox and RTAB-Map. Select exactly one
-mode whenever the `slam` target is created, recreated, checked, or started:
+A component and its selected variant may each declare checks. Every referenced
+check must pass. These checks prove host discovery only, not sensor health,
+permissions inside the container, ROS publication, calibration, or data quality.
 
-| Option | Backend | Required hardware |
-| --- | --- | --- |
-| `--slam_toolbox` | SLAM Toolbox 2D mapping | LiDAR at `/dev/ttyUSB*` |
-| `--slam__rtab` | RTAB-Map RGB-D mapping (default) | RealSense D435i `8086:0b3a` |
-| `--slam_rtab` | Alias for `--slam__rtab` | RealSense D435i `8086:0b3a` |
+## SLAM variants
 
-The options may appear anywhere in the command and are mutually exclusive:
+RTAB-Map remains the default SLAM variant. The generic variant syntax and all
+legacy selectors are equivalent:
 
 ```bash
+./Open-PiRobot.sh create slam --variant slam=toolbox
 ./Open-PiRobot.sh create slam --slam_toolbox
-./Open-PiRobot.sh restart slam --slam__rtab
-./Open-PiRobot.sh check stm32 lidar fusion robot slam --slam_toolbox
+
+./Open-PiRobot.sh create slam --variant slam=rtab
+./Open-PiRobot.sh create slam --slam__rtab
+./Open-PiRobot.sh create slam --slam_rtab
 ```
 
-When starting an existing SLAM container, pass the selector used when it was
-created so the manager validates the correct sensor:
+Variant aliases, checks, and the `SLAM_PACKAGE`, `SLAM_LAUNCH_FILE`, and
+`SLAM_CONFIG_FILE` overrides live in `config/robot.yaml`. Overrides are added
+only to subprocesses for the `slam` component; other components receive the
+unchanged manager environment. Selecting two different variants for one module
+is rejected before any Docker command runs.
+
+Changing the backend requires `create` or `restart`. A plain `start` reuses the
+command stored in the existing container, so pass the matching variant to make
+the manager check the correct hardware prerequisite.
+
+## Registry schema
+
+The top-level registry fields are `version`, `hardware_checks`, and `modules`.
+Module order defines default execution order. Module defaults are:
+
+```yaml
+enabled: true
+default_selected: true
+required: false
+aliases: []
+checks: []
+```
+
+Modules require `compose`, `service`, and `container`. Their Compose paths are
+always relative to the Open-PiRobot project root, including when `--config`
+points to a registry elsewhere. Paths may contain spaces. A module with variants
+also declares `default_variant`; each variant may provide `aliases`,
+`environment`, and `checks`.
+
+Configuration loading is safe and strict. Before Docker use, the manager rejects
+duplicate YAML keys, unknown fields, wrong types, ambiguous or reserved aliases,
+unknown check/variant references, invalid VID/PID values, and paths that are
+absolute or escape the project root.
+
+Use an alternate registry without changing the project default:
 
 ```bash
-./Open-PiRobot.sh start slam --slam_toolbox
+./Open-PiRobot.sh --config /tmp/robot-lab.yaml validate-config
+./Open-PiRobot.sh --config /tmp/robot-lab.yaml build sensor-test
 ```
 
-Changing the algorithm requires `create` or `restart`, because `start` retains
-the command stored in the existing container. Only one backend may run because
-both can publish `map -> odom`.
+`validate-config` checks every enabled component's Compose path without querying
+the Docker daemon and without touching hardware.
 
-## Required and optional targets
+## Adding a component
 
-STM32 is treated as the required safety-critical target:
+Assume a new module already provides `modules/status_display/compose.yaml` with
+service `status-display` and container `open-pi-status-display`. If it uses only
+supported checks, adding it requires no Python change:
 
-- A missing STM32 device is an error.
-- A missing or invalid STM32 Compose file is an error.
-- A failed STM32 Docker operation is an error.
-- The manager stops immediately and returns a non-zero status.
+```yaml
+version: 1
 
-All other targets are optional. A failed optional target produces a warning,
-is skipped, and processing continues with the next target. The command can
-therefore complete successfully even when one or more optional devices are not
-connected.
+hardware_checks:
+  display_port:
+    type: glob
+    pattern: /dev/ttyDISPLAY*
+    message: No status display was found.
 
-This policy applies only to selected targets. For example, the following
-command can build the voice image without selecting or checking STM32:
+modules:
+  # Existing entries remain in their desired execution order.
+
+  status_display:
+    compose: modules/status_display/compose.yaml
+    service: status-display
+    container: open-pi-status-display
+    aliases: [display]
+    default_selected: false
+    checks: [display_port]
+```
+
+Then validate and use it:
 
 ```bash
-./Open-PiRobot.sh build voice
+./Open-PiRobot.sh validate-config
+./Open-PiRobot.sh build display
+./Open-PiRobot.sh create status_display
 ```
 
-## Progress and logs
+The Compose file remains the source for image, build context, mounts, devices,
+environment, and container command. A new hardware-check type requires an
+isolated implementation in `scripts/robot_manager/hardware.py` plus tests.
 
-The manager displays one progress bar per selected target:
+The runtime registry and Git submodules solve different problems. A registry
+entry makes an already present Compose project manageable. It does not add a
+Git submodule, initialize one, select its revision, or update it; those remain
+explicit Git operations outside the manager.
 
-```text
-[##########----------] 50% (1/2) voice
-[####################] 100% (2/2) lidar
+## Required and optional failures
+
+`stm32` is marked `required: true`. Its missing hardware, invalid Compose model,
+or failed operation stops the command with status `1`. Other registered modules
+are optional by default: a failure emits a warning, skips that component, and
+allows later components to run. A completed command with optional skips returns
+status `0`.
+
+Exit statuses are:
+
+- `0`: completed, including optional components that were skipped;
+- `1`: global Docker failure or required-component operational failure;
+- `2`: command-line or registry error.
+
+If the enabled default group is empty, selection fails with status `2` before
+Docker is queried.
+
+## Environment and logging
+
+The inherited environment is preserved for every subprocess. Common overrides
+include:
+
+```bash
+ROS_DOMAIN_ID=7 ./Open-PiRobot.sh create stm32 robot
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build
+BUILD_JOBS=1 ./Open-PiRobot.sh build realsense
 ```
 
-Terminal output remains visible while persistent output is separated by
-severity:
+Terminal output is appended by severity to:
 
 ```text
 script_logs/debug_info.txt
 script_logs/warnings_errors.txt
 ```
 
-- `debug_info.txt` receives `DEBUG`, `INFO`, and `OK` messages, progress bars,
-  status tables, help text, and normal command output.
-- `warnings_errors.txt` receives `WARNING` and `ERROR` messages together with
-  command output written to stderr.
+Normal subprocess output follows stdout and error output follows stderr. The
+`logs` command starts one direct `docker logs` subprocess per selected container,
+prefixes its output with the component name, and terminates each process group
+on `SIGINT` or `SIGTERM` so log descendants are not left running.
 
-Both files are created automatically and excluded from Git. They are not
-cleared between commands, which preserves the history of manager operations.
-
-The `logs` command is different: it opens live Docker log streams and remains
-active until interrupted with `Ctrl+C`.
-
-```bash
-./Open-PiRobot.sh logs stm32
-./Open-PiRobot.sh logs fusion robot
-```
-
-When following all logs, an absent STM32 container triggers the mandatory
-STM32 error policy. Select only the desired optional target if STM32 has not
-been created yet.
-
-## Exit behavior
-
-- Exit status `0` indicates that the requested operation completed. Optional
-  targets may still have produced warnings.
-- Exit status `1` indicates a global Docker failure or a mandatory STM32
-  failure.
-- Exit status `2` indicates invalid command syntax or an unknown target.
-- Interrupting live logs can return the shell's interruption status.
-
-Always inspect warning lines or `script_logs/warnings_errors.txt`; a successful
-exit status does not mean that every optional module was available.
-
-## Environment variables
-
-Environment variables are passed naturally to the individual Compose files:
-
-```bash
-ROS_DOMAIN_ID=7 ./Open-PiRobot.sh create stm32 robot
-ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build stm32 lidar realsense slam
-BUILD_JOBS=1 ./Open-PiRobot.sh build realsense
-```
-
-| Variable | Default | Used by |
-| --- | --- | --- |
-| `ROS_DOMAIN_ID` | `0` | Every container |
-| `ROBOT_PLATFORM` | `linux/arm64` | All eight images, including teleoperation |
-| `HOST_UID` | `1000` | Supported driver image builds |
-| `HOST_GID` | `1000` | Supported driver image builds |
-| `INTERFACES_CONTEXT` | `../../interfaces` | STM32 build context |
-| `LIBREALSENSE_REF` | `v2.56.5` | RealSense build |
-| `REALSENSE_ROS_REF` | `4.56.4` | RealSense ROS build |
-| `BUILD_JOBS` | `2` | RealSense build |
-
-Use the same `ROS_DOMAIN_ID` for every module that should communicate through
-ROS 2.
-
-## Typical workflows
-
-### First robot startup
-
-Choose one SLAM path. For SLAM Toolbox:
-
-```bash
-git submodule update --init --recursive
-./Open-PiRobot.sh check stm32 lidar fusion robot slam --slam_toolbox
-./Open-PiRobot.sh create stm32 lidar fusion robot slam --slam_toolbox
-./Open-PiRobot.sh status
-```
-
-For RTAB-Map, replace `lidar` with `realsense` and use `--slam__rtab`.
-
-### Rebuild one changed module
-
-```bash
-./Open-PiRobot.sh create fusion
-./Open-PiRobot.sh logs fusion
-```
-
-`create` includes an image build and allows Compose to recreate the selected
-container with the new image.
-
-### Stop the robot without deleting containers
-
-```bash
-./Open-PiRobot.sh stop
-```
-
-### Remove selected containers
-
-```bash
-./Open-PiRobot.sh remove voice slam
-```
-
-Images are preserved, so a later `create` can reuse cached build layers.
-
-## Troubleshooting
-
-### Docker daemon is not reachable
-
-Confirm that Docker is running and that the current user can access it:
-
-```bash
-docker info
-docker compose version
-```
-
-### STM32 is not detected
-
-Check the host device and compare it with
-`drivers/Ros2_stm32_driver/config/params.yaml`:
-
-```bash
-ls -l /dev/ttyACM*
-```
-
-The default node configuration expects `/dev/ttyACM0` at 115200 baud.
-
-### An optional module is skipped
-
-Run its check and inspect the persistent logs:
-
-```bash
-./Open-PiRobot.sh check <target>
-./Open-PiRobot.sh status <target>
-./Open-PiRobot.sh logs <target>
-```
-
-Also inspect the target's `config/params.yaml` or other configuration files.
-
-### A container exits immediately
-
-Follow only that container's output:
-
-```bash
-./Open-PiRobot.sh logs <target>
-```
-
-Common causes are host-device permissions, an incorrect serial or audio device,
-ROS parameter errors, and mismatched architectures.
-
-Return to the [main project README](../README.md) for the project architecture,
-dependencies, and Quick Start.
-
-## Architecture decisions
-
-- [ADR-001: Deploy robot capabilities as independent ROS 2 containers](ADR-001-containerized-modules.md)
-- [ADR-002: Provide one hardware-gated, selectable SLAM runtime](ADR-002-selectable-slam-backends.md)
+Return to the [project README](../README.md) for system architecture, ROS
+interfaces, TF ownership, and deployment guidance.
