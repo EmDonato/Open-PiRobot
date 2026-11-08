@@ -62,8 +62,8 @@ To obtain this migration in an existing clean checkout on the robot:
 
 ```bash
 git fetch origin
-git switch jazzy-migration
-git pull --ff-only --recurse-submodules=on-demand origin jazzy-migration
+git switch main
+git pull --ff-only --recurse-submodules=on-demand origin main
 git submodule sync --recursive
 git submodule update --init --recursive
 ```
