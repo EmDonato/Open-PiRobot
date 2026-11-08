@@ -70,7 +70,7 @@ modules:
         aliases: [--slam_toolbox]
         environment:
           SLAM_PACKAGE: slam_toolbox_bringup
-          SLAM_LAUNCH_FILE: slam_toolbox_online_async.launch.py
+          SLAM_LAUNCH_FILE: slam.launch.py
           SLAM_CONFIG_FILE: /ws/config/slam_toolbox_config.yaml
         checks: [lidar_serial]
 
@@ -94,10 +94,24 @@ modules:
     default_selected: false
     aliases: [joystick, open-pi-joystick]
     checks: [joystick]
+    default_variant: direct
+    variants:
+      direct:
+        environment:
+          PIROBOT_TELEOP_CONFIG: ../../config/teleoperation.yaml
+      navigation:
+        environment:
+          PIROBOT_TELEOP_CONFIG: ../../config/teleoperation_navigation.yaml
 
   nav:
+    default_selected: false
     compose: modules/Ros2_nav_module/compose.yaml
     service: navigation
     container: navigation
-    aliases: [navigation, nav]
-    checks: [stm32_serial]
+    aliases: [navigation]
+    default_variant: hardware
+    variants:
+      hardware:
+        environment:
+          PIROBOT_NAV_CONFIG: ../../config/navigation.yaml
+    checks: [stm32_serial, lidar_serial]

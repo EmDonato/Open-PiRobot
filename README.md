@@ -36,7 +36,7 @@ docker compose version
 ### 2. Clone the complete project
 
 ```bash
-git clone --branch jazzy-migration --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
+git clone --branch main --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
 cd Open-PiRobot
 git submodule update --init --recursive
 ```
@@ -46,8 +46,8 @@ submodule:
 
 ```bash
 git fetch origin
-git switch jazzy-migration
-git pull --ff-only --recurse-submodules=on-demand origin jazzy-migration
+git switch main
+git pull --ff-only --recurse-submodules=on-demand origin main
 git submodule sync --recursive
 git submodule update --init --recursive
 ```
@@ -370,3 +370,43 @@ presence, not sensor health, calibration, topic compatibility, or mapping
 quality. Validate the full ROS graph and TF tree on the physical robot before
 autonomous operation. Package metadata and licensing declarations also require
 a final review before distribution.
+
+## Navigation and physical command routing
+
+The main branch now integrates Jazzy with the latest module main branches.
+Nav2 is opt-in, as is teleoperation. The mapping default group starts neither.
+Build all components, including the optional modules, without hardware:
+
+    ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build all nav teleoperation
+
+For direct joystick control, select teleoperation without nav. The root's
+config/teleoperation.yaml routes the physical stamped output to /cmd_vel and
+enables the arm/reset button service handler.
+
+When nav and teleoperation are selected together, the manager chooses the
+navigation teleoperation variant. It routes manual commands to
+/cmd_vel/joystick_stamped; the existing Nav2 velocity_mux owns /cmd_vel as
+TwistStamped. Nav2 retains Twist internally, and STM32 publishes accepted Twist
+on /cmd_vel/accepted for the EKF. A direct variant with nav is rejected.
+
+    ./Open-PiRobot.sh create stm32 lidar fusion robot slam nav teleoperation --slam_toolbox
+
+If Nav2 is already running and only teleoperation is recreated, select its
+matching variant explicitly:
+
+    ./Open-PiRobot.sh create teleoperation --variant teleoperation=navigation
+
+Root hardware configuration lives in config/navigation.yaml and the two
+teleoperation YAMLs; the shared modules keep independent defaults. The graph,
+command arbitration and Nav2 plugin tests use synthetic inputs on isolated
+networks. Native ARM64 and physical-robot acceptance remain separate checks.
+
+## Shared robot model
+
+The robot_descriptor Xacro files and robot_asset directory now match the
+Open-PiRobot-playground model: OBJ/MTL chassis, wheels, LD06 and RealSense assets,
+with the same visual origins, scale and joint geometry. Docker copies only the
+runtime meshes; CMake installs them under share/robot_descriptor/meshes so the
+package URIs resolve on the real robot. CAD and STL source files stay in
+robot_asset for editing. The real bringup retains use_sim_camera=false and
+use_sim_time=false. STM32 still owns its physical imu_link mounting TF.

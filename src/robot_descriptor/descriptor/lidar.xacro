@@ -2,18 +2,18 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
     <joint name="laser_joint" type="fixed">
-        <parent link="base_link"/>
+        <parent link="chassis"/>
         <child link="laser_link"/>
-        <origin xyz="0.075 0 ${wheel_radius+0.181}" rpy="0 3.14159265359 1.57079"/>
+        <!-- Sensor origin at the center of the assembly-coordinate OBJ mesh. -->
+        <origin xyz="0.0800 -0.0030 0.1993" rpy="0 0 0"/>
     </joint>
 
     <link name="laser_link">
         <visual>
-            <origin xyz="0.0035 -0.0 0.041" rpy=" -1.57079  0   3.14159265359"/>
+            <origin xyz="-0.0800 0.0030 -0.1993" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="package://robot_descriptor/meshes/lidar.stl" scale="0.001 0.001 0.001"/>
+                <mesh filename="package://robot_descriptor/meshes/lidar_LD06.obj" scale="0.01 0.01 0.01"/>
             </geometry>
-            <material name="black"/>
         </visual>
 
         <xacro:inertial_cylinder mass="0.1" length="0.04" radius="0.05">

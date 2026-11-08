@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /ws
 
 COPY src/ src/
+COPY robot_asset/meshes/ robot_asset/meshes/
 
 RUN source /opt/ros/jazzy/setup.bash && \
     colcon build --merge-install \

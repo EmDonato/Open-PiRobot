@@ -8,7 +8,7 @@ affected components and their necessary dependents. Consult the
 ## Project context
 
 Open-PiRobot is a modular ROS 2 stack for a Raspberry Pi 5 mobile robot.
-The current baseline is Humble; Jazzy is a planned migration target. Check
+The container baseline is ROS 2 Jazzy on Ubuntu Noble. Check
 Dockerfiles and entrypoints for the actual distribution of each component.
 
 Services run in Docker Compose containers with host networking, Cyclone DDS,

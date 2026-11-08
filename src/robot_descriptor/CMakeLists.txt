@@ -13,11 +13,14 @@ install(
   config
    worlds
    launch
-   meshes
    descriptor
   DESTINATION share/${PROJECT_NAME}
 )
 
+
+# Install the same OBJ/MTL assets used by Open-PiRobot-playground.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../robot_asset/meshes/"
+  DESTINATION share/${PROJECT_NAME}/meshes)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

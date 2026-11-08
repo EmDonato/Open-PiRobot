@@ -75,18 +75,18 @@
   <joint name="chassis_joint" type="fixed">
     <parent link="base_link"/>
     <child link="chassis"/>
-    <origin xyz="0.045 0 ${wheel_radius+0.02}"/>
+    <!-- Keep the body over the axle; lower it relative to the wheel centers. -->
+    <origin xyz="0 0 0.0046" rpy="0 0 0"/>
   </joint>
 
   <link name="chassis">
 
     <visual>
-      <origin xyz="0 0.0035 0" rpy="1.5708 0 1.5708"/>
+      <origin xyz="0 0.0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://robot_descriptor/meshes/chassis_main.stl"
-              scale="0.001 0.001 0.001"/>
+        <mesh filename="package://robot_descriptor/meshes/chassis_diff_wheel_robot.obj"
+              scale="0.01 0.01 0.01"/>
       </geometry>
-      <material name="light_black"/>
     </visual>
 
     <collision>
@@ -104,10 +104,6 @@
     </xacro:inertial_box>
 
   </link>
-
-  <gazebo reference="chassis">
-    <material>Gazebo/Black</material>
-  </gazebo>
 
   <!-- ================= IMU ================= -->
 
@@ -136,7 +132,7 @@
     <visualize>true</visualize>
     <topic>imu</topic>
     <gz_frame_id>imu</gz_frame_id>
-    <plugin filename="libignition-gazebo-imu-system.so" name="ignition::gazebo::systems::Imu">
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu">
     </plugin>
     <imu>
       <angular_velocity>
@@ -164,13 +160,12 @@
   <link name="left_wheel">
 
     <visual>
-      <origin xyz="0 0 -${wheel_offset_y}"
-              rpy="1.5708 -1.5708 -${pi/2}"/>
+      <!-- Mesh exported in assembly coordinates; center it on the wheel joint. -->
+      <origin xyz="0.0018 0.0343 -0.1060" rpy="1.5708 0 0"/>
       <geometry>
-        <mesh filename="package://robot_descriptor/meshes/wheel.stl"
-              scale="0.001 0.001 0.001"/>
+        <mesh filename="package://robot_descriptor/meshes/wheel_left.obj"
+              scale="0.01 0.01 0.01"/>
       </geometry>
-      <material name="blue"/>
     </visual>
 
     <collision>
@@ -187,10 +182,6 @@
     </xacro:inertial_cylinder>
 
   </link>
-
-  <gazebo reference="left_wheel">
-    <material>Gazebo/Blue</material>
-  </gazebo>
 
   <!-- ================= RIGHT WHEEL ================= -->
 
@@ -204,13 +195,11 @@
   <link name="right_wheel">
 
     <visual>
-      <origin xyz="0 0 -${wheel_offset_y}"
-              rpy="1.5708 -1.5708 -${pi/2}"/>
+      <origin xyz="0.0018 0.0343 -0.1060" rpy="1.5708 0 0"/>
       <geometry>
-        <mesh filename="package://robot_descriptor/meshes/wheel.stl"
-              scale="0.001 0.001 0.001"/>
+        <mesh filename="package://robot_descriptor/meshes/wheel_left.obj"
+              scale="0.01 0.01 0.01"/>
       </geometry>
-      <material name="blue"/>
     </visual>
 
     <collision>
@@ -227,10 +216,6 @@
     </xacro:inertial_cylinder>
 
   </link>
-
-  <gazebo reference="right_wheel">
-    <material>Gazebo/Blue</material>
-  </gazebo>
 
   <!-- ================= CASTER ================= -->
 
@@ -261,7 +246,7 @@
     <mu2 value="0.001"/>
   </gazebo>
     <gazebo>
-    <plugin filename="ignition-gazebo-pose-publisher-system" name="ignition::gazebo::systems::PosePublisher">
+    <plugin filename="gz-sim-pose-publisher-system" name="gz::sim::systems::PosePublisher">
         <publish_link_pose>true</publish_link_pose>
         <use_pose_vector_msg>true</use_pose_vector_msg>
         <static_publisher>true</static_publisher>

@@ -1,0 +1,3 @@
+# Preserve the CAD-exported OBJ/MTL bytes copied from the playground.
+robot_asset/meshes/*.obj -text whitespace=blank-at-eol,space-before-tab,cr-at-eol,-blank-at-eof
+robot_asset/meshes/*.mtl -text whitespace=blank-at-eol,space-before-tab,cr-at-eol,-blank-at-eof

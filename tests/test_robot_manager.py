@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.robot_manager.config import ConfigError, HardwareCheck, load_registry
+from scripts.robot_manager.cli import parse_arguments
 from scripts.robot_manager.hardware import HardwareChecker
 
 
@@ -244,7 +245,7 @@ class ManagerIntegrationTests(unittest.TestCase):
             action["environment"],
             {
                 "SLAM_PACKAGE": "slam_toolbox_bringup",
-                "SLAM_LAUNCH_FILE": "slam_toolbox_online_async.launch.py",
+                "SLAM_LAUNCH_FILE": "slam.launch.py",
                 "SLAM_CONFIG_FILE": "/ws/config/slam_toolbox_config.yaml",
             },
         )
@@ -455,3 +456,24 @@ class ConfigurationAndHardwareTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JazzyCommandRoutingTests(unittest.TestCase):
+    def setUp(self):
+        self.registry = load_registry(PROJECT_ROOT / 'config/robot.yaml', PROJECT_ROOT)
+
+    def test_combined_navigation_selects_arbitrated_manual_input(self):
+        parsed = parse_arguments(['create', 'nav', 'teleoperation'], self.registry)
+        self.assertEqual(parsed.variants['teleoperation'], 'navigation')
+        self.assertEqual([m.name for m in parsed.modules], ['nav', 'teleoperation'])
+
+    def test_direct_manual_control_cannot_bypass_selected_nav_arbiter(self):
+        with self.assertRaisesRegex(ConfigError, 'arbitration'):
+            parse_arguments(
+                ['create', 'nav', 'teleoperation', '--variant', 'teleoperation=direct'],
+                self.registry)
+
+    def test_mapping_default_does_not_start_navigation(self):
+        parsed = parse_arguments(['create'], self.registry)
+        self.assertNotIn('nav', [m.name for m in parsed.modules])
+        self.assertEqual(self.registry.modules['teleoperation'].default_variant, 'direct')

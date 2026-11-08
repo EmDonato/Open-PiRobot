@@ -1,0 +1,40 @@
+/**:
+  ros__parameters:
+    use_sim_time: false
+teleoperation_bringup:
+  ros__parameters:
+    start_driver: true
+    start_buttons: true
+    driver_executable: game_controller_node
+    joy_topic: /joy
+    raw_topic: /cmd_vel/joystick_raw
+    command_topic: /cmd_vel/joystick_stamped
+    control_service: /control/command
+joy:
+  ros__parameters:
+    device_id: 0
+    deadzone: 0.08
+    autorepeat_rate: 30.0
+    sticky_buttons: false
+    coalesce_interval_ms: 1
+teleop_twist_joy:
+  ros__parameters:
+    require_enable_button: true
+    enable_button: 9
+    enable_turbo_button: -1
+    axis_linear.x: 1
+    scale_linear.x: 1.0
+    axis_angular.yaw: 2
+    scale_angular.yaw: 1.0
+    publish_stamped_twist: true
+joy_vel_ref:
+  ros__parameters:
+    max_vel: 0.2
+    scales: 1.0
+    wheel_base: 0.2
+joy_service_handler:
+  ros__parameters:
+    joy_service: true
+    arm_button: 0
+    reset_button: 6
+    control_service: /control/command

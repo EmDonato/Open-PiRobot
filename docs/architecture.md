@@ -133,3 +133,12 @@ Hardware checks, successful builds, and runtime validation are separate evidence
 - [Container architecture decision](ADR-001-containerized-modules.md)
 - [SLAM selection decision](ADR-002-selectable-slam-backends.md)
 - [Agent instructions and migration skills](../AGENTS.md)
+
+## Current Jazzy command integration
+
+The optional Nav2 module is selected explicitly. Its root configuration enables
+the existing velocity_mux: navigation Twist and manual TwistStamped are
+arbitrated into the driver's TwistStamped /cmd_vel input. The manager selects
+the matching teleoperation variant when both modules are requested. For manual
+operation without Nav2, the direct variant routes teleoperation to /cmd_vel.
+The driver's accepted Twist topic remains the EKF command input.

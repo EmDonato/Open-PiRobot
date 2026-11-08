@@ -204,6 +204,17 @@ def parse_arguments(argv: list[str], registry: Registry) -> ParsedArguments:
                 selected_names.add(module.name)
     if not selected:
         raise ConfigError("No enabled default components are available")
+    # The physical driver accepts one stamped command stream. Nav2's mux owns
+    # that output when both command sources are selected in this robot registry.
+    if {'nav', 'teleoperation'} <= selected_names:
+        teleoperation = registry.modules['teleoperation']
+        if 'navigation' in teleoperation.variants:
+            if variants.get('teleoperation', 'navigation') != 'navigation':
+                raise ConfigError(
+                    'Nav2 and teleoperation require --variant teleoperation=navigation; '
+                    'direct control would bypass command arbitration'
+                )
+            variants['teleoperation'] = 'navigation'
     return ParsedArguments(command, selected, variants)
 
 

@@ -1,8 +1,9 @@
 # Humble to Jazzy migration
 
-Validation date: 2026-10-17. Implemented and functionally verified on the AMD64
-development PC for the scope below. Raspberry Pi / physical-robot acceptance
-is **NOT RUN**, and the existing package lint suites are not all passing.
+Current main software integration validated on 2026-11-08; see the final section.
+The earlier dated sections preserve the original migration history. Native
+ARM64 and physical-robot acceptance are NOT RUN; historical package lint debt
+is recorded separately from functional validation.
 
 ## Repository state at validation on 2026-10-17
 
@@ -290,3 +291,71 @@ was checked against installed packages, builds, and these primary sources:
 | `robot-modules/slam:jazzy` | `sha256:9fc779862480567fe458a8fb836de3bbd937d16085806e607427fd3086fe53a7` |
 | `open-pi-realsense-driver-img:jazzy` | `sha256:b3a97f33eeb490ee90627857aa304ebc3f4bbf9071984c6bd8d1b4ea4a97665a` |
 | `open-pi-voice-ia-img:jazzy` | `sha256:d3cf038ef3c3996e8eb25c8c6a8b0ffd267ec16bd7bfc9d1ba2dc4313a6dd4b8` |
+
+
+## Main integration and model update — 2026-11-08
+
+The software migration is now integrated into main. The original recovered
+workspace remains in _recuperi_2026-11-08/Open-PiRobot_prima_merge_2026-11-08.
+The root retains its ordinary-source interfaces directory; its stale submodule
+entry was not converted into a different repository layout.
+
+The latest published main branches were fetched before merging each existing
+jazzy-migration branch. SLAM and teleoperation had renamed launch files on main;
+those current launches were retained, with installed configuration and Jazzy
+lifecycle support preserved. The shared stop configuration recovered from the
+playground is included in the published EKF and teleoperation commits. No force
+push was used. The new root gitlinks refer to these published commits:
+
+| Submodule | Published main commit |
+| --- | --- |
+| drivers/Ros2_lidar_driver | `43f51aa7ba8ad9c4f4d915885dd5117e7394e909` |
+| modules/Ros2_nav_module | `a61ae64721d1cff6ea4dff0a30efa3dba82ff7bd` |
+| drivers/Ros2_realsense_driver | `305d1a5861fac915bb5b47973249206143df56e6` |
+| modules/Ros2_sensor_fusion | `235ce89bf9d615140f48ab5c3611cb445d52e2e4` |
+| modules/Ros2_slam_module | `d6dd9e84706d3ef7f803858613cc83fd0aadc813` |
+| drivers/Ros2_stm32_driver | `2c503fe7d8848b0ec04e6c47096ca027457c45d0` |
+| modules/teleoperation | `41df08e8dcd16547dba8774806a319f1b3c9c7bb` |
+| modules/Ros2_tts_voice | `89b7092155967a3bf55173216bcf09aeb535a684` |
+
+Root integration fixes:
+
+- Removed a duplicate nav alias that prevented registry loading.
+- Selected the current slam.launch.py instead of the deleted launch name.
+- Kept Nav2 opt-in and added root hardware configurations using the existing
+  module parameter-file environment overrides.
+- Kept Twist inside Nav2. Its existing mux publishes TwistStamped to /cmd_vel;
+  the combined manual profile feeds that mux. The manager selects the combined
+  profile and rejects a direct-manual bypass when both targets are requested.
+- Replaced the robot descriptor Xacro and source assets with the playground's
+  current model. CMake and Docker install the new OBJ/MTL assets while retaining
+  the real robot launch and existing driver ownership of imu_link.
+
+Validation performed on AMD64 with Jazzy/Noble:
+
+| Check | Result | Scope |
+| --- | --- | --- |
+| Nine image builds | PASS | Root, three drivers, EKF, SLAM, voice, teleoperation, Nav2 |
+| New-model root image rebuild | PASS | robot_descriptor and open_pi_bringup |
+| Manager tests | PASS | 18 tests, including arbitration selection and registry validation |
+| Compose models | PASS | AMD64 and ARM64 configuration rendering; no ARM64 build claim |
+| Nav2 tests | PASS | 30 tests including stationary synthetic lifecycle, planning, command and cancel smoke |
+| STM32 serial smoke | PASS | Pseudo-terminal only, no device or actuator mounts |
+| Teleoperation smoke | PASS | Installed config and Joy to stamped physical velocity, driver disabled |
+| SLAM smoke | PASS | Current launch automatically reaches active, then exits cleanly |
+| Cross-container graph | PASS | Synthetic IMU/encoder inputs, EKF odometry, dynamic TF and late static TF |
+| Cross-container arbitration | PASS | Joystick priority, Nav2 fallback, command timeout and zero stop |
+| Installed new robot model | PASS | Connected single-parent TF tree and all OBJ/MTL resources |
+| Graph after model replacement | PASS | Repeated affected EKF/robot TF integration check |
+| Native ARM64 and physical robot | NOT RUN | No Pi builder or physical-device test in this task |
+
+Tests use isolated Docker networks or network-none containers, without physical
+actuator mounts. The old package-wide lint debt described above was not removed
+by blanket formatting. Current build and runtime logs are retained outside Git
+in _recuperi_2026-11-08/integrazione_jazzy. Software integration is verified for
+the scope above; Pi/hardware acceptance still follows the section above.
+
+Rollback: use the preserved recovered tree, or check out root bfeeda22 and its
+recorded submodules in a separate directory. Existing Humble images and map/data
+volumes were not removed. Jazzy tags were rebuilt locally; source publication
+does not distribute those images.
