@@ -1,0 +1,103 @@
+version: 1
+
+hardware_checks:
+  stm32_serial:
+    type: glob
+    pattern: /dev/ttyACM*
+    message: No STM32 serial device found in /dev/ttyACM*.
+  lidar_serial:
+    type: glob
+    pattern: /dev/ttyUSB*
+    message: No LiDAR serial device found in /dev/ttyUSB*.
+  realsense_usb:
+    type: usb
+    vid: "8086"
+    pid: "0b3a"
+    message: RealSense D435i USB device 8086:0b3a was not found.
+  audio:
+    type: directory
+    path: /dev/snd
+    message: No host audio device directory found at /dev/snd.
+  joystick:
+    type: glob
+    pattern: /dev/input/js*
+    message: No joystick device found in /dev/input/js*.
+
+modules:
+  stm32:
+    compose: drivers/Ros2_stm32_driver/compose.yaml
+    service: stm32_driver
+    container: open-pi-stm32-driver
+    aliases: [stm32_driver, open-pi-stm32-driver]
+    required: true
+    checks: [stm32_serial]
+
+  lidar:
+    compose: drivers/Ros2_lidar_driver/compose.yaml
+    service: lidar_driver
+    container: open-pi-lidar-driver
+    aliases: [lidar_driver, open-pi-lidar-driver]
+    checks: [lidar_serial]
+
+  realsense:
+    compose: drivers/Ros2_realsense_driver/compose.yaml
+    service: realsense_driver
+    container: open-pi-realsense-driver
+    aliases: [camera, realsense_driver, open-pi-realsense-driver]
+    checks: [realsense_usb]
+
+  fusion:
+    compose: modules/Ros2_sensor_fusion/compose.yaml
+    service: open-pi-sensor-fusion
+    container: open-pi-sensor-fusion
+    aliases: [sensor-fusion, open-pi-sensor-fusion]
+
+  slam:
+    compose: modules/Ros2_slam_module/compose.yaml
+    service: slam
+    container: robot-slam
+    aliases: [mapping, localization, open-pi-slam]
+    default_variant: rtab
+    variants:
+      rtab:
+        aliases: [--slam__rtab, --slam_rtab]
+        environment:
+          SLAM_PACKAGE: rtabmap_bringup
+          SLAM_LAUNCH_FILE: slam.launch.py
+          SLAM_CONFIG_FILE: /ws/config/slam.yaml
+        checks: [realsense_usb]
+      toolbox:
+        aliases: [--slam_toolbox]
+        environment:
+          SLAM_PACKAGE: slam_toolbox_bringup
+          SLAM_LAUNCH_FILE: slam_toolbox_online_async.launch.py
+          SLAM_CONFIG_FILE: /ws/config/slam_toolbox_config.yaml
+        checks: [lidar_serial]
+
+  voice:
+    compose: modules/Ros2_tts_voice/compose.yaml
+    service: open-pi-voice-ia
+    container: open-pi-voice-ia
+    aliases: [tts, voice-ia, open-pi-voice-ia]
+    checks: [audio]
+
+  robot:
+    compose: compose.yaml
+    service: open_pi_robot
+    container: open-pi-robot
+    aliases: [main, bringup, open_pi_robot, open-pi-robot]
+
+  teleoperation:
+    compose: modules/teleoperation/compose.yaml
+    service: open-pi-joystick
+    container: open-pi-joystick
+    default_selected: false
+    aliases: [joystick, open-pi-joystick]
+    checks: [joystick]
+
+  nav:
+    compose: modules/Ros2_nav_module/compose.yaml
+    service: navigation
+    container: navigation
+    aliases: [navigation, nav]
+    checks: [stm32_serial]

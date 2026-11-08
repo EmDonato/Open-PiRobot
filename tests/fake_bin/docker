@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+arguments = sys.argv[1:]
+log_path = os.environ.get("FAKE_DOCKER_LOG")
+if log_path:
+    record = {
+        "argv": arguments,
+        "environment": {
+            name: os.environ[name]
+            for name in ("SLAM_PACKAGE", "SLAM_LAUNCH_FILE", "SLAM_CONFIG_FILE")
+            if name in os.environ
+        },
+    }
+    with Path(log_path).open("a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps(record) + "\n")
+
+
+if arguments[:2] == ["compose", "version"] or arguments == ["info"]:
+    raise SystemExit(0)
+
+if arguments[:2] == ["container", "inspect"]:
+    container = arguments[-1]
+    missing = os.environ.get("FAKE_DOCKER_MISSING_CONTAINERS", "").split(",")
+    if container in missing:
+        raise SystemExit(1)
+    if "--format" in arguments:
+        format_value = arguments[arguments.index("--format") + 1]
+        print("true" if "Running" in format_value else "running")
+    raise SystemExit(0)
+
+if arguments and arguments[0] == "compose":
+    failed_service = os.environ.get("FAKE_DOCKER_FAIL_SERVICE")
+    failed_action = os.environ.get("FAKE_DOCKER_FAIL_ACTION")
+    if failed_service and failed_service in arguments:
+        if not failed_action or failed_action in arguments:
+            raise SystemExit(1)
+    raise SystemExit(0)
+
+if arguments and arguments[0] == "logs":
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+    )
+    child_path = os.environ.get("FAKE_DOCKER_CHILD_PIDS")
+    if child_path:
+        with Path(child_path).open("a", encoding="utf-8") as child_file:
+            child_file.write(f"{child.pid}\n")
+    print("fake log line", flush=True)
+    try:
+        while child.poll() is None:
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        pass
+    raise SystemExit(0)
+
+raise SystemExit(0)

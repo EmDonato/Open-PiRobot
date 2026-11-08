@@ -1,6 +1,6 @@
 # Open-PiRobot
 
-Open-PiRobot is a modular ROS 2 Humble stack for a Raspberry Pi 5 mobile
+Open-PiRobot is a modular ROS 2 Jazzy stack for a Raspberry Pi 5 mobile
 robot. Hardware drivers, state estimation, SLAM, voice output, and robot
 description run in separate Docker containers and communicate through Cyclone
 DDS on the host network.
@@ -17,6 +17,7 @@ when its required sensor is not detected.
 You need a 64-bit Linux host with:
 
 - Git and a GitHub SSH key, because the submodule URLs use SSH;
+- Python 3.10 or newer and PyYAML (`python3` and `python3-yaml` on Ubuntu);
 - Docker Engine and Docker Compose v2;
 - `usbutils` (`lsusb`) for RealSense detection;
 - permission to access Docker and the connected USB, serial, input, and audio
@@ -27,6 +28,7 @@ ROS 2 does not need to be installed on the host.
 Verify Docker:
 
 ```bash
+sudo apt install python3 python3-yaml
 docker info
 docker compose version
 ```
@@ -34,7 +36,7 @@ docker compose version
 ### 2. Clone the complete project
 
 ```bash
-git clone --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
+git clone --branch jazzy-migration --recurse-submodules git@github.com:EmDonato/Open-PiRobot.git
 cd Open-PiRobot
 git submodule update --init --recursive
 ```
@@ -43,10 +45,16 @@ If the repository was already cloned, update it together with every
 submodule:
 
 ```bash
-git pull --ff-only --recurse-submodules=on-demand
+git fetch origin
+git switch jazzy-migration
+git pull --ff-only --recurse-submodules=on-demand origin jazzy-migration
 git submodule sync --recursive
 git submodule update --init --recursive
 ```
+
+Save any local changes in the root and submodules before switching branches.
+The submodule update checks out the exact commits recorded by the root;
+do not use `--remote` to deploy this migration.
 
 ### 3. Select the build platform
 
@@ -59,6 +67,16 @@ export ROBOT_PLATFORM=linux/amd64
 
 Do not set this override on the Raspberry Pi unless a different target is
 intentional.
+
+Build on the development PC without starting services or requiring hardware:
+
+```bash
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build
+ROBOT_PLATFORM=linux/amd64 ./Open-PiRobot.sh build teleoperation
+```
+
+See [Jazzy migration evidence](docs/MIGRATION_HUMBLE_TO_JAZZY.md) for validation
+results and the remaining Raspberry Pi acceptance checks.
 
 ### 4. Connect the required hardware
 
@@ -142,10 +160,11 @@ maintaining a list of Docker port mappings.
 | `slam` | `robot-slam` | SLAM Toolbox or RTAB-Map | LiDAR for Toolbox; RealSense for RTAB |
 | `voice` | `open-pi-voice-ia` | Piper text-to-speech | `/dev/snd` |
 | `robot` | `open-pi-robot` | Xacro expansion and `robot_state_publisher` | None |
+| `teleoperation` | `open-pi-joystick` | Joystick input and velocity commands | `/dev/input/js*` |
 
-The teleoperation submodule provides the `open-pi-joystick` container, but it
-is currently managed with `modules/teleoperation/joystick.sh` or its Compose
-file rather than by `Open-PiRobot.sh`.
+Teleoperation is centrally manageable but intentionally excluded from the
+default group. Select it explicitly with `teleoperation`, `joystick`, or
+`open-pi-joystick`.
 
 The major runtime relationships are:
 
@@ -185,7 +204,9 @@ hardware.
 
 ```text
 Open-PiRobot/
-├── Open-PiRobot.sh                 Central container manager
+├── Open-PiRobot.sh                 Thin Python manager wrapper
+├── config/robot.yaml               Runtime component registry
+├── scripts/robot_manager/          Manager implementation
 ├── compose.yaml                    Robot-description service
 ├── docker/                         Main image and entrypoint
 ├── interfaces/                     Shared ROS messages and services
@@ -201,7 +222,7 @@ Open-PiRobot/
 │   ├── Ros2_slam_module/           Toolbox and RTAB-Map bringup
 │   ├── Ros2_tts_voice/             Piper text-to-speech
 │   └── teleoperation/              Joystick and velocity control
-└── doc/
+└── docs/
     ├── README.md                   Manager reference
     ├── ADR-001-containerized-modules.md
     └── ADR-002-selectable-slam-backends.md
@@ -217,7 +238,7 @@ recorded by the parent repository.
 General syntax:
 
 ```bash
-./Open-PiRobot.sh [COMMAND] [TARGET ...] [SLAM OPTION]
+./Open-PiRobot.sh [--config PATH] [COMMAND] [TARGET ...] [VARIANT]
 ```
 
 | Command | Aliases | Effect |
@@ -231,6 +252,8 @@ General syntax:
 | `status` | `--status` | Show container state |
 | `check` | `--check` | Validate Docker, Compose, and hardware prerequisites |
 | `logs` | `--logs` | Follow the last 50 lines and new container output |
+| `list` | — | Show registered components, aliases, enablement, and default membership |
+| `validate-config` | — | Validate the registry and enabled Compose paths without Docker or hardware |
 
 Examples:
 
@@ -240,13 +263,23 @@ Examples:
 ./Open-PiRobot.sh stop
 ./Open-PiRobot.sh remove voice
 ./Open-PiRobot.sh logs stm32 fusion slam
+./Open-PiRobot.sh build teleoperation
+./Open-PiRobot.sh --variant slam=toolbox create slam
 ```
 
-When no target list is supplied, the command applies to every manager target.
-See [`doc/README.md`](doc/README.md) for aliases, error policy, exit statuses,
+When no target list is supplied, the command applies to the enabled default
+group. `all` selects that same group; teleoperation is not part of it.
+See [`docs/README.md`](docs/README.md) for aliases, error policy, exit statuses,
 and logging details.
 
 ## Configuration
+
+The ordered runtime registry is [`config/robot.yaml`](config/robot.yaml).
+It declares Compose paths, services, containers, aliases, required/optional
+policy, hardware checks, default selection, and SLAM variants. Compose files
+remain authoritative for images, mounts, devices, and container parameters.
+Use `--config PATH` to test another registry; its Compose paths still resolve
+relative to this project root.
 
 All communicating containers must use the same DDS domain:
 
@@ -259,7 +292,7 @@ Important environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ROS_DOMAIN_ID` | `0` | ROS 2 discovery domain shared by all containers |
-| `ROBOT_PLATFORM` | `linux/arm64` | Target platform for supported images |
+| `ROBOT_PLATFORM` | `linux/arm64` | Target platform for all eight images |
 | `HOST_UID` | `1000` | Container user ID for supported builds |
 | `HOST_GID` | `1000` | Container group ID for supported builds |
 | `INTERFACES_CONTEXT` | `../../interfaces` | Shared-interface context for the STM32 image |
@@ -322,10 +355,10 @@ message rates, and the complete TF chain before tuning mapping parameters.
 
 ## Documentation
 
-- [`doc/README.md`](doc/README.md): complete container-manager reference.
-- [`doc/ADR-001-containerized-modules.md`](doc/ADR-001-containerized-modules.md):
+- [`docs/README.md`](docs/README.md): complete container-manager reference.
+- [`docs/ADR-001-containerized-modules.md`](docs/ADR-001-containerized-modules.md):
   container-per-module deployment, host networking, and DDS choice.
-- [`doc/ADR-002-selectable-slam-backends.md`](doc/ADR-002-selectable-slam-backends.md):
+- [`docs/ADR-002-selectable-slam-backends.md`](docs/ADR-002-selectable-slam-backends.md):
   selectable SLAM backends and hardware-gated activation.
 - Each driver and module has its own README with package-specific parameters,
   topics, and validation steps.
